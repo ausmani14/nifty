@@ -1,0 +1,25 @@
+{
+  "current_system_state": "IMPLEMENTED \u2014 WAITING FOR LIVE INPUT",
+  "last_updated_utc": "2026-10-31T19:46:20.934780+00:00",
+  "timezone": "Asia/Kolkata",
+  "model_integrity": {
+    "is_intact": true,
+    "status": "PASS",
+    "model_sha256": "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df",
+    "n_estimators": 43,
+    "feature_count": 63
+  },
+  "ledger_integrity": {
+    "is_valid": true,
+    "prediction_count": 0,
+    "outcome_count": 0,
+    "tip_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "chain_issues": [
+      "Ledger is empty (intact at genesis)."
+    ]
+  },
+  "scheduler_status": "ENABLED",
+  "latest_error": null,
+  "research_status": "RESEARCH_BASELINE_ONLY",
+  "trading_authorized": false
+}

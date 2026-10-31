@@ -1,0 +1,58 @@
+{
+  "phase": "Phase 14",
+  "audit_type": "Operational Readiness Gate",
+  "readiness_verdict": "READY FOR FIRST PROSPECTIVE SESSION",
+  "target_first_session_date": "2026-11-02",
+  "snapshot_type": "SNAPSHOT_0850",
+  "cutoff_time_ist": "08:50:00",
+  "reconciliation_time_ist": "15:30:00",
+  "activation_boundary_utc": "2026-10-31T14:47:00Z",
+  "audit_timestamp_utc": "2026-10-31T15:13:05.695813+00:00",
+  "frozen_model": {
+    "model_name": "Snapshot B T0 Full Development Production Model",
+    "model_sha256": "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df",
+    "meta_sha256": "d64fee485721cc4e2596e8fd10039d9ea2a7e41ce84b90e19b6bd994ea5d7f33",
+    "n_estimators": 43,
+    "feature_count": 63,
+    "price_feature_count": 45,
+    "context_feature_count": 18,
+    "research_status": "RESEARCH_BASELINE_ONLY",
+    "trading_authorized": false
+  },
+  "invariants_audit": {
+    "1_model_sha256_verified": true,
+    "2_n_estimators_43_verified": true,
+    "3_exact_63_canonical_features_verified": true,
+    "4_cutoff_0850_ist_enforced": true,
+    "5_future_ohlc_rejected": true,
+    "6_news_volume_flow_excluded": true,
+    "7_post_cutoff_context_rejected": true,
+    "8_append_only_and_idempotency_enforced": true,
+    "9_physical_storage_separated": true,
+    "10_retrospective_and_synthetic_isolated": true
+  },
+  "ledger_state": {
+    "predictions_count": 0,
+    "outcomes_count": 0,
+    "tip_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "is_clean_genesis": true,
+    "predictions_ledger_path": "data/interim/phase14_shadow/shadow_predictions_ledger.jsonl",
+    "outcomes_ledger_path": "data/interim/phase14_shadow/shadow_outcomes_ledger.jsonl"
+  },
+  "calendar_verification": {
+    "exchange": "NSE (National Stock Exchange of India)",
+    "target_date": "2026-11-02",
+    "weekday": "Monday",
+    "is_regular_trading_day": true,
+    "is_weekend": false,
+    "is_holiday": false,
+    "is_special_session": false,
+    "diwali_muhurat_date_2026": "2026-11-08"
+  },
+  "operational_commands": {
+    "preflight": ".\\\\.venv\\\\Scripts\\\\python.exe scripts/run_shadow_prediction.py --preflight-only",
+    "prediction_0850": ".\\\\.venv\\\\Scripts\\\\python.exe scripts/run_shadow_prediction.py --session-date 2026-11-02 --input-file data/interim/phase14_shadow/input_2026-11-02_0850.json",
+    "reconciliation_1530": ".\\\\.venv\\\\Scripts\\\\python.exe scripts/reconcile_shadow_outcomes.py --session-date 2026-11-02 --open <OPEN> --close <CLOSE> --source NSE_OFFICIAL_CASH",
+    "audit": ".\\\\.venv\\\\Scripts\\\\python.exe scripts/verify_shadow_ledger.py"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "evaluation_timestamp_utc": "2026-10-31T14:22:55.022511+00:00",
+  "evaluation_classification": "RETROSPECTIVE_OUT_OF_SAMPLE_EVALUATION",
+  "evaluation_period": {
+    "start_prediction_date": "2022-01-03",
+    "end_prediction_date": "2026-09-03",
+    "start_target_date": "2022-01-04",
+    "end_target_date": "2026-09-04",
+    "n_sessions": 1154
+  },
+  "primary_model_evaluation": {
+    "model": "Full Development Production Model (N*=43)",
+    "primary_metric": {
+      "metric_name": "Pearson IC",
+      "value": 0.020131398903466765,
+      "p_value_two_sided": 0.49447838443527553,
+      "p_value_one_sided": 0.24723919221763777,
+      "statistically_significant_at_05": false
+    },
+    "secondary_forecasting_metrics": {
+      "spearman_ic": 0.004239397191881406,
+      "spearman_p_value": 0.8856115469012963,
+      "mae": 0.00504243066159518,
+      "rmse": 0.006778370652005588,
+      "mean_directional_accuracy_pct": 52.426343154246105
+    },
+    "statistical_diagnostics": {
+      "historical_training_mean_mu": -0.0005557978906222141,
+      "residual_pearson_ic": 0.02013139857623873,
+      "residual_pearson_p_value": 0.49447839145301525,
+      "residual_spearman_ic": 0.004239397191881406,
+      "residual_spearman_p_value": 0.8856115469012963,
+      "incremental_r2": -0.003574060018365799
+    },
+    "outcome_classification": "OUTCOME_B_WEAK_OR_ABSENT",
+    "mandatory_outcome_statement": "The Snapshot B intraday predictive relationship fails to reject the null hypothesis of zero or negative correlation on the retrospective evaluation partition."
+  },
+  "secondary_diagnostic_models": {
+    "fold_8_model": {
+      "pearson_ic": 0.0011906521590124707,
+      "pearson_p_value": 0.9677715837188052,
+      "spearman_ic": -0.0030768587954104836,
+      "spearman_p_value": 0.9168442753430618
+    },
+    "8_fold_walk_forward_ensemble": {
+      "pearson_ic": -0.017417324898684364,
+      "pearson_p_value": 0.5544667067886163,
+      "spearman_ic": -0.024945010542074035,
+      "spearman_p_value": 0.39721267711528424
+    }
+  },
+  "benchmarks": {
+    "benchmark_1_zero_return": {
+      "mae": 0.0050295509192500535,
+      "rmse": 0.006768865368803447
+    },
+    "benchmark_2_training_mean": {
+      "mae": 0.005027739049707868,
+      "rmse": 0.006766289873679472
+    }
+  }
+}

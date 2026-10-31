@@ -1,0 +1,32 @@
+{
+  "source_dataset": "nifty_50_daily.csv",
+  "source_sha256": "2d6512a878a68a01b56f7dd9193ac7419879949311cc8f338da52c1694771d95",
+  "generated_at": "2026-09-14T13:53:34.055835+00:00",
+  "target_version": "1.0.0",
+  "threshold_method": "volatility_scaled",
+  "threshold_parameters": {
+    "k": 0.35,
+    "window": 20
+  },
+  "total_rows": 4654,
+  "classified_rows": 4633,
+  "warmup_rows_excluded": 20,
+  "terminal_unlabeled_rows": 1,
+  "start_date": "2007-09-17",
+  "end_date": "2026-09-04",
+  "class_counts": {
+    "UP": 1752,
+    "DOWN": 1495,
+    "SIDEWAYS": 1386
+  },
+  "class_distribution_pct": {
+    "UP": 37.82,
+    "DOWN": 32.27,
+    "SIDEWAYS": 29.92
+  },
+  "up_down_ratio": 1.172,
+  "snapshot_a_file": "nifty50_targets_snapshot_a.csv",
+  "snapshot_a_sha256": "a13fed61f92c3fcccf9fe09ce59eb0df4d95ef8dce0aef970ff5ed1220ea055d",
+  "snapshot_b_file": "nifty50_targets_snapshot_b.csv",
+  "snapshot_b_sha256": "54ac54fdeafd53ddea20b1d31cd89c1fbaebdbc88c0f24f8a1f73ce2867e01d2"
+}

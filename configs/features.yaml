@@ -1,0 +1,597 @@
+feature_count: 45
+max_lookback: 200
+features:
+  ret_1d:
+    name: ret_1d
+    category: returns
+    formula: (close_t / close_(t-1)) - 1
+    lookback_period: 1
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 1-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_2d:
+    name: ret_2d
+    category: returns
+    formula: (close_t / close_(t-2)) - 1
+    lookback_period: 2
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 2-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_3d:
+    name: ret_3d
+    category: returns
+    formula: (close_t / close_(t-3)) - 1
+    lookback_period: 3
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 3-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_5d:
+    name: ret_5d
+    category: returns
+    formula: (close_t / close_(t-5)) - 1
+    lookback_period: 5
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 5-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_10d:
+    name: ret_10d
+    category: returns
+    formula: (close_t / close_(t-10)) - 1
+    lookback_period: 10
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 10-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_20d:
+    name: ret_20d
+    category: returns
+    formula: (close_t / close_(t-20)) - 1
+    lookback_period: 20
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 20-day close-to-close percentage price return.
+    leakage_risk: none
+    notes: null
+  ret_lag_1:
+    name: ret_lag_1
+    category: lags
+    formula: ret_1d_(t-1)
+    lookback_period: 2
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: 1-day return lagged by 1 completed trading session(s).
+    leakage_risk: none
+    notes: null
+  ret_lag_2:
+    name: ret_lag_2
+    category: lags
+    formula: ret_1d_(t-2)
+    lookback_period: 3
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: 1-day return lagged by 2 completed trading session(s).
+    leakage_risk: none
+    notes: null
+  ret_lag_3:
+    name: ret_lag_3
+    category: lags
+    formula: ret_1d_(t-3)
+    lookback_period: 4
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: 1-day return lagged by 3 completed trading session(s).
+    leakage_risk: none
+    notes: null
+  ret_lag_5:
+    name: ret_lag_5
+    category: lags
+    formula: ret_1d_(t-5)
+    lookback_period: 6
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: 1-day return lagged by 5 completed trading session(s).
+    leakage_risk: none
+    notes: null
+  ret_lag_10:
+    name: ret_lag_10
+    category: lags
+    formula: ret_1d_(t-10)
+    lookback_period: 11
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: 1-day return lagged by 10 completed trading session(s).
+    leakage_risk: none
+    notes: null
+  sma_5:
+    name: sma_5
+    category: moving_averages
+    formula: 'mean(close_(t-5+1 : t))'
+    lookback_period: 5
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 5-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_5:
+    name: close_to_sma_5
+    category: moving_averages
+    formula: (close_t / sma_5) - 1
+    lookback_period: 5
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 5-day SMA.
+    leakage_risk: none
+    notes: null
+  sma_10:
+    name: sma_10
+    category: moving_averages
+    formula: 'mean(close_(t-10+1 : t))'
+    lookback_period: 10
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 10-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_10:
+    name: close_to_sma_10
+    category: moving_averages
+    formula: (close_t / sma_10) - 1
+    lookback_period: 10
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 10-day SMA.
+    leakage_risk: none
+    notes: null
+  sma_20:
+    name: sma_20
+    category: moving_averages
+    formula: 'mean(close_(t-20+1 : t))'
+    lookback_period: 20
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 20-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_20:
+    name: close_to_sma_20
+    category: moving_averages
+    formula: (close_t / sma_20) - 1
+    lookback_period: 20
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 20-day SMA.
+    leakage_risk: none
+    notes: null
+  sma_50:
+    name: sma_50
+    category: moving_averages
+    formula: 'mean(close_(t-50+1 : t))'
+    lookback_period: 50
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 50-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_50:
+    name: close_to_sma_50
+    category: moving_averages
+    formula: (close_t / sma_50) - 1
+    lookback_period: 50
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 50-day SMA.
+    leakage_risk: none
+    notes: null
+  sma_100:
+    name: sma_100
+    category: moving_averages
+    formula: 'mean(close_(t-100+1 : t))'
+    lookback_period: 100
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 100-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_100:
+    name: close_to_sma_100
+    category: moving_averages
+    formula: (close_t / sma_100) - 1
+    lookback_period: 100
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 100-day SMA.
+    leakage_risk: none
+    notes: null
+  sma_200:
+    name: sma_200
+    category: moving_averages
+    formula: 'mean(close_(t-200+1 : t))'
+    lookback_period: 200
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 200-day simple moving average of closing price.
+    leakage_risk: none
+    notes: null
+  close_to_sma_200:
+    name: close_to_sma_200
+    category: moving_averages
+    formula: (close_t / sma_200) - 1
+    lookback_period: 200
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Percentage distance of closing price from trailing 200-day SMA.
+    leakage_risk: none
+    notes: null
+  mom_5d:
+    name: mom_5d
+    category: momentum
+    formula: close_t - close_(t-5)
+    lookback_period: 5
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Absolute price change over trailing 5 completed sessions.
+    leakage_risk: none
+    notes: null
+  mom_10d:
+    name: mom_10d
+    category: momentum
+    formula: close_t - close_(t-10)
+    lookback_period: 10
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Absolute price change over trailing 10 completed sessions.
+    leakage_risk: none
+    notes: null
+  mom_20d:
+    name: mom_20d
+    category: momentum
+    formula: close_t - close_(t-20)
+    lookback_period: 20
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Absolute price change over trailing 20 completed sessions.
+    leakage_risk: none
+    notes: null
+  mom_60d:
+    name: mom_60d
+    category: momentum
+    formula: close_t - close_(t-60)
+    lookback_period: 60
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Absolute price change over trailing 60 completed sessions.
+    leakage_risk: none
+    notes: null
+  volatility_5d:
+    name: volatility_5d
+    category: volatility
+    formula: 'std_dev(ret_1d_(t-5+1 : t))'
+    lookback_period: 6
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 5-day sample standard deviation of daily returns.
+    leakage_risk: none
+    notes: null
+  volatility_10d:
+    name: volatility_10d
+    category: volatility
+    formula: 'std_dev(ret_1d_(t-10+1 : t))'
+    lookback_period: 11
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 10-day sample standard deviation of daily returns.
+    leakage_risk: none
+    notes: null
+  volatility_20d:
+    name: volatility_20d
+    category: volatility
+    formula: 'std_dev(ret_1d_(t-20+1 : t))'
+    lookback_period: 21
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 20-day sample standard deviation of daily returns.
+    leakage_risk: none
+    notes: null
+  volatility_60d:
+    name: volatility_60d
+    category: volatility
+    formula: 'std_dev(ret_1d_(t-60+1 : t))'
+    lookback_period: 61
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Trailing 60-day sample standard deviation of daily returns.
+    leakage_risk: none
+    notes: null
+  volatility_ann_20d:
+    name: volatility_ann_20d
+    category: volatility
+    formula: volatility_20d * sqrt(252)
+    lookback_period: 21
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Annualized trailing 20-day volatility assuming 252 trading sessions.
+    leakage_risk: none
+    notes: null
+  hl_range_pct:
+    name: hl_range_pct
+    category: ohlc_shape
+    formula: (high_t - low_t) / low_t
+    lookback_period: 1
+    input_columns:
+    - high
+    - low
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Intraday high-low range expressed as a percentage of low.
+    leakage_risk: none
+    notes: null
+  close_pos_in_range:
+    name: close_pos_in_range
+    category: ohlc_shape
+    formula: (close_t - low_t) / (high_t - low_t)
+    lookback_period: 1
+    input_columns:
+    - high
+    - low
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Close location within the daily high-low range [0.0, 1.0].
+    leakage_risk: none
+    notes: null
+  open_to_close_ret:
+    name: open_to_close_ret
+    category: ohlc_shape
+    formula: (close_t - open_t) / open_t
+    lookback_period: 1
+    input_columns:
+    - open
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Intraday session return from session open to official close.
+    leakage_risk: none
+    notes: null
+  high_to_close_dist:
+    name: high_to_close_dist
+    category: ohlc_shape
+    formula: (high_t - close_t) / close_t
+    lookback_period: 1
+    input_columns:
+    - high
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Normalized distance between session high and official close.
+    leakage_risk: none
+    notes: null
+  low_to_close_dist:
+    name: low_to_close_dist
+    category: ohlc_shape
+    formula: (close_t - low_t) / close_t
+    lookback_period: 1
+    input_columns:
+    - low
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Normalized distance between official close and session low.
+    leakage_risk: none
+    notes: null
+  sma_ratio_20_50:
+    name: sma_ratio_20_50
+    category: trend
+    formula: (sma_20 / sma_50) - 1
+    lookback_period: 50
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Spread between 20-day and 50-day moving averages.
+    leakage_risk: none
+    notes: null
+  sma_ratio_50_200:
+    name: sma_ratio_50_200
+    category: trend
+    formula: (sma_50 / sma_200) - 1
+    lookback_period: 200
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Spread between 50-day and 200-day moving averages (Golden/Death cross
+      proxy).
+    leakage_risk: none
+    notes: null
+  trend_slope_20d:
+    name: trend_slope_20d
+    category: trend
+    formula: linear_regression_slope(close_(t-19:t)) / mean(close)
+    lookback_period: 20
+    input_columns:
+    - close
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Normalized linear regression slope of closing prices over trailing
+      20 days.
+    leakage_risk: none
+    notes: null
+  day_of_week:
+    name: day_of_week
+    category: calendar
+    formula: trading_date.weekday()
+    lookback_period: 0
+    input_columns:
+    - trading_date
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Day of week integer (0=Monday, 1=Tuesday, ..., 4=Friday, 5=Saturday).
+    leakage_risk: none
+    notes: null
+  day_of_month:
+    name: day_of_month
+    category: calendar
+    formula: trading_date.day
+    lookback_period: 0
+    input_columns:
+    - trading_date
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Day of the month integer (1 to 31).
+    leakage_risk: none
+    notes: null
+  month:
+    name: month
+    category: calendar
+    formula: trading_date.month
+    lookback_period: 0
+    input_columns:
+    - trading_date
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Calendar month integer (1 to 12).
+    leakage_risk: none
+    notes: null
+  quarter:
+    name: quarter
+    category: calendar
+    formula: (trading_date.month - 1) // 3 + 1
+    lookback_period: 0
+    input_columns:
+    - trading_date
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Calendar quarter integer (1 to 4).
+    leakage_risk: none
+    notes: null
+  is_month_end:
+    name: is_month_end
+    category: calendar
+    formula: 1 if next_calendar_day.month != current_month else 0
+    lookback_period: 0
+    input_columns:
+    - trading_date
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    description: Binary flag (1 or 0) indicating whether session is near the month-end
+      expiry boundary.
+    leakage_risk: none
+    notes: null

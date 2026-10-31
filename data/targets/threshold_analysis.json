@@ -1,0 +1,1135 @@
+{
+  "development_end_date": "2021-12-31",
+  "total_methods_evaluated": 13,
+  "evaluations": [
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.35,
+        "window": 20
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3479,
+      "warmup_rows": 20,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1321,
+        "DOWN": 1124,
+        "SIDEWAYS": 1034
+      },
+      "class_distribution": {
+        "UP": 37.97,
+        "DOWN": 32.31,
+        "SIDEWAYS": 29.72
+      },
+      "up_down_ratio": 1.175,
+      "sideways_pct": 29.72,
+      "threshold_mean": 0.004132,
+      "threshold_stdev": 0.00266,
+      "threshold_min": 0.001123,
+      "threshold_max": 0.019587,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1519,
+          "up_count": 552,
+          "down_count": 525,
+          "sideways_count": 442,
+          "up_pct": 36.34,
+          "down_pct": 34.56,
+          "sideways_pct": 29.1,
+          "up_down_ratio": 1.051,
+          "mean_threshold": 0.005302
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 467,
+          "down_count": 369,
+          "sideways_count": 385,
+          "up_pct": 38.25,
+          "down_pct": 30.22,
+          "sideways_pct": 31.53,
+          "up_down_ratio": 1.266,
+          "mean_threshold": 0.002828
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 302,
+          "down_count": 230,
+          "sideways_count": 207,
+          "up_pct": 40.87,
+          "down_pct": 31.12,
+          "sideways_pct": 28.01,
+          "up_down_ratio": 1.313,
+          "mean_threshold": 0.003881
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 28.43,
+        "low_vol_up_pct": 38.02,
+        "low_vol_down_pct": 33.55,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 30.83,
+        "high_vol_up_pct": 37.99,
+        "high_vol_down_pct": 31.18,
+        "sideways_pct_spread": 2.4
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.35 * sigma_20(t). Represents a 0.35 standard deviation band of trailing 20-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.3,
+        "window": 20
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3479,
+      "warmup_rows": 20,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1384,
+        "DOWN": 1191,
+        "SIDEWAYS": 904
+      },
+      "class_distribution": {
+        "UP": 39.78,
+        "DOWN": 34.23,
+        "SIDEWAYS": 25.98
+      },
+      "up_down_ratio": 1.162,
+      "sideways_pct": 25.98,
+      "threshold_mean": 0.003541,
+      "threshold_stdev": 0.00228,
+      "threshold_min": 0.000963,
+      "threshold_max": 0.016789,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1519,
+          "up_count": 576,
+          "down_count": 557,
+          "sideways_count": 386,
+          "up_pct": 37.92,
+          "down_pct": 36.67,
+          "sideways_pct": 25.41,
+          "up_down_ratio": 1.034,
+          "mean_threshold": 0.004544
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 492,
+          "down_count": 394,
+          "sideways_count": 335,
+          "up_pct": 40.29,
+          "down_pct": 32.27,
+          "sideways_pct": 27.44,
+          "up_down_ratio": 1.249,
+          "mean_threshold": 0.002424
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 316,
+          "down_count": 240,
+          "sideways_count": 183,
+          "up_pct": 42.76,
+          "down_pct": 32.48,
+          "sideways_pct": 24.76,
+          "up_down_ratio": 1.317,
+          "mean_threshold": 0.003327
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 24.65,
+        "low_vol_up_pct": 39.83,
+        "low_vol_down_pct": 35.52,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 27.11,
+        "high_vol_up_pct": 39.85,
+        "high_vol_down_pct": 33.04,
+        "sideways_pct_spread": 2.46
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.3 * sigma_20(t). Represents a 0.30 standard deviation band of trailing 20-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.25,
+        "window": 20
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3479,
+      "warmup_rows": 20,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1451,
+        "DOWN": 1252,
+        "SIDEWAYS": 776
+      },
+      "class_distribution": {
+        "UP": 41.71,
+        "DOWN": 35.99,
+        "SIDEWAYS": 22.31
+      },
+      "up_down_ratio": 1.159,
+      "sideways_pct": 22.31,
+      "threshold_mean": 0.002951,
+      "threshold_stdev": 0.0019,
+      "threshold_min": 0.000802,
+      "threshold_max": 0.013991,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1519,
+          "up_count": 601,
+          "down_count": 585,
+          "sideways_count": 333,
+          "up_pct": 39.57,
+          "down_pct": 38.51,
+          "sideways_pct": 21.92,
+          "up_down_ratio": 1.027,
+          "mean_threshold": 0.003787
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 520,
+          "down_count": 414,
+          "sideways_count": 287,
+          "up_pct": 42.59,
+          "down_pct": 33.91,
+          "sideways_pct": 23.51,
+          "up_down_ratio": 1.256,
+          "mean_threshold": 0.00202
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 330,
+          "down_count": 253,
+          "sideways_count": 156,
+          "up_pct": 44.65,
+          "down_pct": 34.24,
+          "sideways_pct": 21.11,
+          "up_down_ratio": 1.304,
+          "mean_threshold": 0.002772
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 20.99,
+        "low_vol_up_pct": 41.98,
+        "low_vol_down_pct": 37.03,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 23.39,
+        "high_vol_up_pct": 41.59,
+        "high_vol_down_pct": 35.02,
+        "sideways_pct_spread": 2.4
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.25 * sigma_20(t). Represents a 0.25 standard deviation band of trailing 20-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.4,
+        "window": 20
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3479,
+      "warmup_rows": 20,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1246,
+        "DOWN": 1058,
+        "SIDEWAYS": 1175
+      },
+      "class_distribution": {
+        "UP": 35.81,
+        "DOWN": 30.41,
+        "SIDEWAYS": 33.77
+      },
+      "up_down_ratio": 1.178,
+      "sideways_pct": 33.77,
+      "threshold_mean": 0.004722,
+      "threshold_stdev": 0.00304,
+      "threshold_min": 0.001284,
+      "threshold_max": 0.022385,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1519,
+          "up_count": 520,
+          "down_count": 494,
+          "sideways_count": 505,
+          "up_pct": 34.23,
+          "down_pct": 32.52,
+          "sideways_pct": 33.25,
+          "up_down_ratio": 1.053,
+          "mean_threshold": 0.006059
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 436,
+          "down_count": 350,
+          "sideways_count": 435,
+          "up_pct": 35.71,
+          "down_pct": 28.67,
+          "sideways_pct": 35.63,
+          "up_down_ratio": 1.246,
+          "mean_threshold": 0.003232
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 290,
+          "down_count": 214,
+          "sideways_count": 235,
+          "up_pct": 39.24,
+          "down_pct": 28.96,
+          "sideways_pct": 31.8,
+          "up_down_ratio": 1.355,
+          "mean_threshold": 0.004436
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 33.2,
+        "low_vol_up_pct": 35.52,
+        "low_vol_down_pct": 31.28,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 34.21,
+        "high_vol_up_pct": 36.13,
+        "high_vol_down_pct": 29.67,
+        "sideways_pct_spread": 1.01
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.4 * sigma_20(t). Represents a 0.40 standard deviation band of trailing 20-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.5,
+        "window": 20
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3479,
+      "warmup_rows": 20,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1134,
+        "DOWN": 956,
+        "SIDEWAYS": 1389
+      },
+      "class_distribution": {
+        "UP": 32.6,
+        "DOWN": 27.48,
+        "SIDEWAYS": 39.93
+      },
+      "up_down_ratio": 1.186,
+      "sideways_pct": 39.93,
+      "threshold_mean": 0.005902,
+      "threshold_stdev": 0.0038,
+      "threshold_min": 0.001605,
+      "threshold_max": 0.027981,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1519,
+          "up_count": 471,
+          "down_count": 456,
+          "sideways_count": 592,
+          "up_pct": 31.01,
+          "down_pct": 30.02,
+          "sideways_pct": 38.97,
+          "up_down_ratio": 1.033,
+          "mean_threshold": 0.007574
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 398,
+          "down_count": 314,
+          "sideways_count": 509,
+          "up_pct": 32.6,
+          "down_pct": 25.72,
+          "sideways_pct": 41.69,
+          "up_down_ratio": 1.268,
+          "mean_threshold": 0.00404
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 265,
+          "down_count": 186,
+          "sideways_count": 288,
+          "up_pct": 35.86,
+          "down_pct": 25.17,
+          "sideways_pct": 38.97,
+          "up_down_ratio": 1.425,
+          "mean_threshold": 0.005545
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 39.24,
+        "low_vol_up_pct": 32.44,
+        "low_vol_down_pct": 28.31,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 40.49,
+        "high_vol_up_pct": 32.75,
+        "high_vol_down_pct": 26.76,
+        "sideways_pct_spread": 1.25
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.5 * sigma_20(t). Represents a 0.50 standard deviation band of trailing 20-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "volatility_scaled",
+      "parameters": {
+        "k": 0.35,
+        "window": 60
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3439,
+      "warmup_rows": 60,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1259,
+        "DOWN": 1083,
+        "SIDEWAYS": 1097
+      },
+      "class_distribution": {
+        "UP": 36.61,
+        "DOWN": 31.49,
+        "SIDEWAYS": 31.9
+      },
+      "up_down_ratio": 1.163,
+      "sideways_pct": 31.9,
+      "threshold_mean": 0.004246,
+      "threshold_stdev": 0.002451,
+      "threshold_min": 0.001689,
+      "threshold_max": 0.013832,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1479,
+          "up_count": 513,
+          "down_count": 499,
+          "sideways_count": 467,
+          "up_pct": 34.69,
+          "down_pct": 33.74,
+          "sideways_pct": 31.58,
+          "up_down_ratio": 1.028,
+          "mean_threshold": 0.005452
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 459,
+          "down_count": 362,
+          "sideways_count": 400,
+          "up_pct": 37.59,
+          "down_pct": 29.65,
+          "sideways_pct": 32.76,
+          "up_down_ratio": 1.268,
+          "mean_threshold": 0.00289
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 287,
+          "down_count": 222,
+          "sideways_count": 230,
+          "up_pct": 38.84,
+          "down_pct": 30.04,
+          "sideways_pct": 31.12,
+          "up_down_ratio": 1.293,
+          "mean_threshold": 0.004071
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 29.94,
+        "low_vol_up_pct": 37.15,
+        "low_vol_down_pct": 32.91,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 33.86,
+        "high_vol_up_pct": 36.07,
+        "high_vol_down_pct": 30.08,
+        "sideways_pct_spread": 3.92
+      },
+      "statistical_rationale": "Econometrically grounded in realized return dispersion: theta_t = 0.35 * sigma_60(t). Represents a 0.35 standard deviation band of trailing 60-day daily returns. Dynamically expands in turbulent regimes and compresses in calm regimes."
+    },
+    {
+      "method_name": "empirical_distribution",
+      "parameters": {
+        "percentile": 25.0,
+        "window": 252
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3247,
+      "warmup_rows": 252,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1290,
+        "DOWN": 1099,
+        "SIDEWAYS": 858
+      },
+      "class_distribution": {
+        "UP": 39.73,
+        "DOWN": 33.85,
+        "SIDEWAYS": 26.42
+      },
+      "up_down_ratio": 1.174,
+      "sideways_pct": 26.42,
+      "threshold_mean": 0.003129,
+      "threshold_stdev": 0.001424,
+      "threshold_min": 0.00136,
+      "threshold_max": 0.008468,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1287,
+          "up_count": 480,
+          "down_count": 455,
+          "sideways_count": 352,
+          "up_pct": 37.3,
+          "down_pct": 35.35,
+          "sideways_pct": 27.35,
+          "up_down_ratio": 1.055,
+          "mean_threshold": 0.00413
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 497,
+          "down_count": 404,
+          "sideways_count": 320,
+          "up_pct": 40.7,
+          "down_pct": 33.09,
+          "sideways_pct": 26.21,
+          "up_down_ratio": 1.23,
+          "mean_threshold": 0.002195
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 313,
+          "down_count": 240,
+          "sideways_count": 186,
+          "up_pct": 42.35,
+          "down_pct": 32.48,
+          "sideways_pct": 25.17,
+          "up_down_ratio": 1.304,
+          "mean_threshold": 0.002928
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.009804,
+        "low_vol_count": 1624,
+        "low_vol_sideways_pct": 26.17,
+        "low_vol_up_pct": 39.29,
+        "low_vol_down_pct": 34.54,
+        "high_vol_count": 1623,
+        "high_vol_sideways_pct": 26.68,
+        "high_vol_up_pct": 40.17,
+        "high_vol_down_pct": 33.15,
+        "sideways_pct_spread": 0.51
+      },
+      "statistical_rationale": "Empirical quantile noise filter: theta_t = percentile_25.0(|r|_252). Directly isolates the lowest 25.0% of absolute price fluctuations over trailing 252 sessions."
+    },
+    {
+      "method_name": "empirical_distribution",
+      "parameters": {
+        "percentile": 30.0,
+        "window": 252
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3247,
+      "warmup_rows": 252,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1201,
+        "DOWN": 1021,
+        "SIDEWAYS": 1025
+      },
+      "class_distribution": {
+        "UP": 36.99,
+        "DOWN": 31.44,
+        "SIDEWAYS": 31.57
+      },
+      "up_down_ratio": 1.176,
+      "sideways_pct": 31.57,
+      "threshold_mean": 0.003867,
+      "threshold_stdev": 0.001798,
+      "threshold_min": 0.001724,
+      "threshold_max": 0.010463,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1287,
+          "up_count": 437,
+          "down_count": 428,
+          "sideways_count": 422,
+          "up_pct": 33.95,
+          "down_pct": 33.26,
+          "sideways_pct": 32.79,
+          "up_down_ratio": 1.021,
+          "mean_threshold": 0.005119
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 473,
+          "down_count": 372,
+          "sideways_count": 376,
+          "up_pct": 38.74,
+          "down_pct": 30.47,
+          "sideways_pct": 30.79,
+          "up_down_ratio": 1.272,
+          "mean_threshold": 0.002646
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 291,
+          "down_count": 221,
+          "sideways_count": 227,
+          "up_pct": 39.38,
+          "down_pct": 29.91,
+          "sideways_pct": 30.72,
+          "up_down_ratio": 1.317,
+          "mean_threshold": 0.003702
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.009804,
+        "low_vol_count": 1624,
+        "low_vol_sideways_pct": 31.1,
+        "low_vol_up_pct": 36.76,
+        "low_vol_down_pct": 32.14,
+        "high_vol_count": 1623,
+        "high_vol_sideways_pct": 32.04,
+        "high_vol_up_pct": 37.22,
+        "high_vol_down_pct": 30.75,
+        "sideways_pct_spread": 0.94
+      },
+      "statistical_rationale": "Empirical quantile noise filter: theta_t = percentile_30.0(|r|_252). Directly isolates the lowest 30.0% of absolute price fluctuations over trailing 252 sessions."
+    },
+    {
+      "method_name": "empirical_distribution",
+      "parameters": {
+        "percentile": 35.0,
+        "window": 252
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3247,
+      "warmup_rows": 252,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1126,
+        "DOWN": 935,
+        "SIDEWAYS": 1186
+      },
+      "class_distribution": {
+        "UP": 34.68,
+        "DOWN": 28.8,
+        "SIDEWAYS": 36.53
+      },
+      "up_down_ratio": 1.204,
+      "sideways_pct": 36.53,
+      "threshold_mean": 0.004598,
+      "threshold_stdev": 0.002136,
+      "threshold_min": 0.002041,
+      "threshold_max": 0.01239,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1287,
+          "up_count": 406,
+          "down_count": 389,
+          "sideways_count": 492,
+          "up_pct": 31.55,
+          "down_pct": 30.23,
+          "sideways_pct": 38.23,
+          "up_down_ratio": 1.044,
+          "mean_threshold": 0.006118
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 445,
+          "down_count": 343,
+          "sideways_count": 433,
+          "up_pct": 36.45,
+          "down_pct": 28.09,
+          "sideways_pct": 35.46,
+          "up_down_ratio": 1.297,
+          "mean_threshold": 0.003153
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 275,
+          "down_count": 203,
+          "sideways_count": 261,
+          "up_pct": 37.21,
+          "down_pct": 27.47,
+          "sideways_pct": 35.32,
+          "up_down_ratio": 1.355,
+          "mean_threshold": 0.004336
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.009804,
+        "low_vol_count": 1624,
+        "low_vol_sideways_pct": 36.64,
+        "low_vol_up_pct": 34.36,
+        "low_vol_down_pct": 29.0,
+        "high_vol_count": 1623,
+        "high_vol_sideways_pct": 36.41,
+        "high_vol_up_pct": 35.0,
+        "high_vol_down_pct": 28.59,
+        "sideways_pct_spread": -0.23
+      },
+      "statistical_rationale": "Empirical quantile noise filter: theta_t = percentile_35.0(|r|_252). Directly isolates the lowest 35.0% of absolute price fluctuations over trailing 252 sessions."
+    },
+    {
+      "method_name": "empirical_distribution",
+      "parameters": {
+        "percentile": 40.0,
+        "window": 252
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3247,
+      "warmup_rows": 252,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1042,
+        "DOWN": 873,
+        "SIDEWAYS": 1332
+      },
+      "class_distribution": {
+        "UP": 32.09,
+        "DOWN": 26.89,
+        "SIDEWAYS": 41.02
+      },
+      "up_down_ratio": 1.194,
+      "sideways_pct": 41.02,
+      "threshold_mean": 0.005365,
+      "threshold_stdev": 0.002538,
+      "threshold_min": 0.002443,
+      "threshold_max": 0.014653,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1287,
+          "up_count": 375,
+          "down_count": 362,
+          "sideways_count": 550,
+          "up_pct": 29.14,
+          "down_pct": 28.13,
+          "sideways_pct": 42.74,
+          "up_down_ratio": 1.036,
+          "mean_threshold": 0.007167
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 415,
+          "down_count": 322,
+          "sideways_count": 484,
+          "up_pct": 33.99,
+          "down_pct": 26.37,
+          "sideways_pct": 39.64,
+          "up_down_ratio": 1.289,
+          "mean_threshold": 0.003677
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 252,
+          "down_count": 189,
+          "sideways_count": 298,
+          "up_pct": 34.1,
+          "down_pct": 25.58,
+          "sideways_pct": 40.32,
+          "up_down_ratio": 1.333,
+          "mean_threshold": 0.005016
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.009804,
+        "low_vol_count": 1624,
+        "low_vol_sideways_pct": 40.95,
+        "low_vol_up_pct": 31.77,
+        "low_vol_down_pct": 27.28,
+        "high_vol_count": 1623,
+        "high_vol_sideways_pct": 41.1,
+        "high_vol_up_pct": 32.41,
+        "high_vol_down_pct": 26.49,
+        "sideways_pct_spread": 0.15
+      },
+      "statistical_rationale": "Empirical quantile noise filter: theta_t = percentile_40.0(|r|_252). Directly isolates the lowest 40.0% of absolute price fluctuations over trailing 252 sessions."
+    },
+    {
+      "method_name": "fixed_baseline",
+      "parameters": {
+        "value": 0.003
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3499,
+      "warmup_rows": 0,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1378,
+        "DOWN": 1182,
+        "SIDEWAYS": 939
+      },
+      "class_distribution": {
+        "UP": 39.38,
+        "DOWN": 33.78,
+        "SIDEWAYS": 26.84
+      },
+      "up_down_ratio": 1.166,
+      "sideways_pct": 26.84,
+      "threshold_mean": 0.003,
+      "threshold_stdev": 0.0,
+      "threshold_min": 0.003,
+      "threshold_max": 0.003,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1539,
+          "up_count": 617,
+          "down_count": 598,
+          "sideways_count": 324,
+          "up_pct": 40.09,
+          "down_pct": 38.86,
+          "sideways_pct": 21.05,
+          "up_down_ratio": 1.032,
+          "mean_threshold": 0.003
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 452,
+          "down_count": 350,
+          "sideways_count": 419,
+          "up_pct": 37.02,
+          "down_pct": 28.67,
+          "sideways_pct": 34.32,
+          "up_down_ratio": 1.291,
+          "mean_threshold": 0.003
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 309,
+          "down_count": 234,
+          "sideways_count": 196,
+          "up_pct": 41.81,
+          "down_pct": 31.66,
+          "sideways_pct": 26.52,
+          "up_down_ratio": 1.321,
+          "mean_threshold": 0.003
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 32.44,
+        "low_vol_up_pct": 35.81,
+        "low_vol_down_pct": 31.74,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 21.58,
+        "high_vol_up_pct": 42.52,
+        "high_vol_down_pct": 35.89,
+        "sideways_pct_spread": -10.86
+      },
+      "statistical_rationale": "Fixed baseline benchmark: theta_t = 0.30% constant. Rigid boundary without dynamic adjustment across market cycles."
+    },
+    {
+      "method_name": "fixed_baseline",
+      "parameters": {
+        "value": 0.005
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3499,
+      "warmup_rows": 0,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 1100,
+        "DOWN": 954,
+        "SIDEWAYS": 1445
+      },
+      "class_distribution": {
+        "UP": 31.44,
+        "DOWN": 27.26,
+        "SIDEWAYS": 41.3
+      },
+      "up_down_ratio": 1.153,
+      "sideways_pct": 41.3,
+      "threshold_mean": 0.005,
+      "threshold_stdev": 0.0,
+      "threshold_min": 0.005,
+      "threshold_max": 0.005,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1539,
+          "up_count": 518,
+          "down_count": 506,
+          "sideways_count": 515,
+          "up_pct": 33.66,
+          "down_pct": 32.88,
+          "sideways_pct": 33.46,
+          "up_down_ratio": 1.024,
+          "mean_threshold": 0.005
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 331,
+          "down_count": 265,
+          "sideways_count": 625,
+          "up_pct": 27.11,
+          "down_pct": 21.7,
+          "sideways_pct": 51.19,
+          "up_down_ratio": 1.249,
+          "mean_threshold": 0.005
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 251,
+          "down_count": 183,
+          "sideways_count": 305,
+          "up_pct": 33.96,
+          "down_pct": 24.76,
+          "sideways_pct": 41.27,
+          "up_down_ratio": 1.372,
+          "mean_threshold": 0.005
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 49.3,
+        "low_vol_up_pct": 26.8,
+        "low_vol_down_pct": 23.9,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 33.74,
+        "high_vol_up_pct": 35.66,
+        "high_vol_down_pct": 30.6,
+        "sideways_pct_spread": -15.56
+      },
+      "statistical_rationale": "Fixed baseline benchmark: theta_t = 0.50% constant. Rigid boundary without dynamic adjustment across market cycles."
+    },
+    {
+      "method_name": "fixed_baseline",
+      "parameters": {
+        "value": 0.0075
+      },
+      "partition": "development",
+      "total_rows": 3499,
+      "classified_rows": 3499,
+      "warmup_rows": 0,
+      "terminal_unlabeled_rows": 0,
+      "class_counts": {
+        "UP": 816,
+        "DOWN": 721,
+        "SIDEWAYS": 1962
+      },
+      "class_distribution": {
+        "UP": 23.32,
+        "DOWN": 20.61,
+        "SIDEWAYS": 56.07
+      },
+      "up_down_ratio": 1.132,
+      "sideways_pct": 56.07,
+      "threshold_mean": 0.0075,
+      "threshold_stdev": 0.0,
+      "threshold_min": 0.0075,
+      "threshold_max": 0.0075,
+      "periods": [
+        {
+          "period_name": "Early Period (2007-2013)",
+          "start_date": "2007-01-01",
+          "end_date": "2013-12-31",
+          "total_classified": 1539,
+          "up_count": 425,
+          "down_count": 402,
+          "sideways_count": 712,
+          "up_pct": 27.62,
+          "down_pct": 26.12,
+          "sideways_pct": 46.26,
+          "up_down_ratio": 1.057,
+          "mean_threshold": 0.0075
+        },
+        {
+          "period_name": "Middle Period (2014-2018)",
+          "start_date": "2014-01-01",
+          "end_date": "2018-12-31",
+          "total_classified": 1221,
+          "up_count": 211,
+          "down_count": 187,
+          "sideways_count": 823,
+          "up_pct": 17.28,
+          "down_pct": 15.32,
+          "sideways_pct": 67.4,
+          "up_down_ratio": 1.128,
+          "mean_threshold": 0.0075
+        },
+        {
+          "period_name": "Recent Dev Period (2019-2021)",
+          "start_date": "2019-01-01",
+          "end_date": "2021-12-31",
+          "total_classified": 739,
+          "up_count": 180,
+          "down_count": 132,
+          "sideways_count": 427,
+          "up_pct": 24.36,
+          "down_pct": 17.86,
+          "sideways_pct": 57.78,
+          "up_down_ratio": 1.364,
+          "mean_threshold": 0.0075
+        }
+      ],
+      "volatility_regime": {
+        "metric_name": "trailing_60d_realized_volatility",
+        "median_volatility": 0.010088,
+        "low_vol_count": 1720,
+        "low_vol_sideways_pct": 66.4,
+        "low_vol_up_pct": 17.15,
+        "low_vol_down_pct": 16.45,
+        "high_vol_count": 1719,
+        "high_vol_sideways_pct": 46.36,
+        "high_vol_up_pct": 28.85,
+        "high_vol_down_pct": 24.78,
+        "sideways_pct_spread": -20.04
+      },
+      "statistical_rationale": "Fixed baseline benchmark: theta_t = 0.75% constant. Rigid boundary without dynamic adjustment across market cycles."
+    }
+  ],
+  "recommended_method": "volatility_scaled",
+  "recommended_parameters": {
+    "k": 0.35,
+    "window": 20
+  },
+  "recommendation_rationale": "Grounded in financial econometric theory per MASTER_SPECIFICATION Section 5.2: the threshold represents a dynamic boundary scaled directly to trailing 20-day realized volatility (theta_t = 0.35 * sigma_20). This provides an economically interpretable, dimensionally consistent standard deviation unit (0.35 standard deviations of daily price variation), expanding during high-volatility turbulence and compressing during low-volatility regimes. Class proportions (such as SIDEWAYS percentage) are evaluated strictly as post-hoc diagnostics and were NOT used as an optimization target or selection score.",
+  "holdout_validation": {
+    "period": "2021-12-31 to 2026-09-04",
+    "total_rows": 1154,
+    "up_pct": 37.35,
+    "down_pct": 32.15,
+    "sideways_pct": 30.5,
+    "up_down_ratio": 1.162
+  }
+}

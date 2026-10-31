@@ -1,0 +1,19 @@
+# Default project-wide configuration schema for NIFTY AI
+system:
+  project_name: "nifty-ai"
+  timezone: "Asia/Kolkata"
+
+snapshots:
+  market_close_snapshot:
+    time: "15:40:00"
+    description: "Prediction generated after market close (15:30 IST) using same-day finalized data."
+  pre_market_snapshot:
+    time: "08:50:00"
+    description: "Updated prediction generated before market open (09:00 IST) incorporating overnight and global information."
+
+targets:
+  direction:
+    classes: ["UP", "DOWN", "SIDEWAYS"]
+  regression:
+    - "expected_next_day_return"
+    - "expected_next_day_close"

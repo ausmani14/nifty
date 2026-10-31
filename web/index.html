@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIFTY AI — Forward Research Shadow Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Disclaimer Banner -->
+  <div class="disclaimer-banner">
+    <strong>GOVERNANCE RESTRICTION:</strong> RESEARCH BASELINE ONLY. Model unpromoted for production trading. Zero automated order routing. Observational forward validation only.
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-container">
+      <div class="logo-area">
+        <span class="logo-title">NIFTY AI</span>
+        <span class="logo-tag">Snapshot B (T0)</span>
+      </div>
+      <div class="governance-pill">
+        <span style="font-size: 1rem;">&#9888;</span> RESEARCH BASELINE ONLY
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Bar -->
+  <nav class="tab-nav">
+    <div class="nav-container">
+      <button class="nav-btn active" data-tab="tab-overview">Overview</button>
+      <button class="nav-btn" data-tab="tab-daily">Daily Prediction</button>
+      <button class="nav-btn" data-tab="tab-history">Prediction History</button>
+      <button class="nav-btn" data-tab="tab-actual-vs-pred">Actual vs Predicted</button>
+      <button class="nav-btn" data-tab="tab-analytics">Analytics (Checkpoints)</button>
+      <button class="nav-btn" data-tab="tab-research">Model Research</button>
+      <button class="nav-btn" data-tab="tab-status">System Status</button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- 1. Overview Tab -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="callout">
+        <strong>Prospective Forward Observation System:</strong> Operating pre-market at 08:50:00 IST to generate immutable intraday Open-to-Close forecasts ($T0$). Reconciled after 15:30:00 IST.
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title">Latest Prediction Status <span id="overview-badge" class="status-badge badge-neutral">LOADING</span></div>
+          <div id="overview-pred-val" class="card-value val-neutral">--</div>
+          <div id="overview-pred-bps" class="card-subtext">Awaiting live prospective capture</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Target Trading Session</div>
+          <div id="overview-target-date" class="card-value font-mono">--</div>
+          <div id="overview-cutoff" class="card-subtext">Cutoff: 08:50:00 Asia/Kolkata</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Post-Market Outcome</div>
+          <div id="overview-outcome-val" class="card-value val-neutral">--</div>
+          <div id="overview-outcome-status" class="card-subtext">Status: N/A</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Active Model Integrity</div>
+          <div style="font-family: var(--font-mono); font-size: 0.875rem; margin-top: 0.5rem;">
+            <div><strong>Model:</strong> Snapshot B T0 Primary ($N^*=43$ trees)</div>
+            <div><strong>SHA-256:</strong> <code id="overview-model-hash">981bbc80...</code></div>
+            <div><strong>Features:</strong> 63 (45 Price + 18 Market Context)</div>
+            <div><strong>Integrity:</strong> <span id="overview-model-intact" class="status-badge badge-valid">VERIFIED</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Append-Only Ledger Status</div>
+          <div style="font-family: var(--font-mono); font-size: 0.875rem; margin-top: 0.5rem;">
+            <div><strong>Prediction Records:</strong> <span id="overview-pred-count">0</span></div>
+            <div><strong>Reconciled Outcomes:</strong> <span id="overview-out-count">0</span></div>
+            <div><strong>Cryptographic Tip:</strong> <code id="overview-tip-hash">00000000...</code></div>
+            <div><strong>Ledger Integrity:</strong> <span id="overview-ledger-intact" class="status-badge badge-valid">GENESIS INTACT</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Daily Prediction Tab -->
+    <section id="tab-daily" class="tab-pane">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-title">Snapshot B Point-in-Time Prediction</div>
+        <div class="grid-3" style="margin-top: 1rem;">
+          <div>
+            <div class="card-subtext">Expected Return ($T0$)</div>
+            <div id="daily-pred-return" class="card-value">--</div>
+          </div>
+          <div>
+            <div class="card-subtext">Expected Return (Basis Points)</div>
+            <div id="daily-pred-bps" class="card-value">--</div>
+          </div>
+          <div>
+            <div class="card-subtext">Directional Bias</div>
+            <div id="daily-dir-bias" class="card-value">--</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem; font-size: 0.85rem; font-family: var(--font-mono);">
+          <div class="grid-2">
+            <div>
+              <div><strong>Target Session:</strong> <span id="daily-target-date">--</span></div>
+              <div><strong>Prediction Cutoff:</strong> 08:50:00 Asia/Kolkata</div>
+              <div><strong>Generated At:</strong> <span id="daily-generated-at">--</span></div>
+            </div>
+            <div>
+              <div><strong>Prediction ID:</strong> <span id="daily-pred-id">--</span></div>
+              <div><strong>Validation Status:</strong> <span id="daily-val-status">--</span></div>
+              <div><strong>Outcome Status:</strong> <span id="daily-out-status">--</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Prediction History Tab -->
+    <section id="tab-history" class="tab-pane">
+      <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Prospective Prediction Ledger History</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Prediction Date</th>
+              <th>Target Date</th>
+              <th>Predicted T0</th>
+              <th>Basis Points</th>
+              <th>Direction</th>
+              <th>Status</th>
+              <th>Record Hash</th>
+            </tr>
+          </thead>
+          <tbody id="history-table-body">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-dim);">No prospective predictions recorded yet. Ledger is in genesis state.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. Actual vs Predicted Tab -->
+    <section id="tab-actual-vs-pred" class="tab-pane">
+      <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Reconciled Outcomes & Prediction Errors</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Session Date</th>
+              <th>Predicted T0 (bps)</th>
+              <th>Actual Open</th>
+              <th>Actual Close</th>
+              <th>Actual T0 (bps)</th>
+              <th>Error (bps)</th>
+              <th>Direction Match</th>
+            </tr>
+          </thead>
+          <tbody id="actual-table-body">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-dim);">No reconciled session pairs available yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 5. Analytics Tab -->
+    <section id="tab-analytics" class="tab-pane">
+      <div class="callout">
+        <strong>Observation Checkpoints:</strong> Formal evaluations are scheduled at $N=60$ (Operational Review), $N=120$ (Interim Descriptive Review), and $N=252$ (Annual Econometric Evaluation). Prospective statistics are isolated from historical retrospective holdouts.
+      </div>
+
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-title">Prospective Sample Size</div>
+          <div id="analytics-n" class="card-value font-mono">0</div>
+          <div class="card-subtext">Milestone: 0 / 60 Sessions</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Pearson IC ($r_p$)</div>
+          <div id="analytics-ic" class="card-value font-mono">N/A</div>
+          <div class="card-subtext">Min sample required: N &ge; 30</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Model MAE</div>
+          <div id="analytics-mae" class="card-value font-mono">N/A</div>
+          <div class="card-subtext">Zero Benchmark: 50.30 bps</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Directional Accuracy</div>
+          <div id="analytics-mda" class="card-value font-mono">N/A</div>
+          <div class="card-subtext">Always Short: 51.91%</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Model Research Tab -->
+    <section id="tab-research" class="tab-pane">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-title">Model Specification & Research Classification</div>
+        <div style="font-family: var(--font-mono); font-size: 0.875rem; line-height: 1.8;">
+          <div><strong>Classification:</strong> <span class="governance-pill">RESEARCH BASELINE ONLY</span></div>
+          <div><strong>Production Promotion:</strong> STRICTLY REJECTED (Phase 13 Step 5 Decision Gate)</div>
+          <div><strong>Live Trading:</strong> STRICTLY DISQUALIFIED (Zero Live Orders)</div>
+          <div><strong>Algorithm:</strong> XGBoost Regressor (<code>xgboost.XGBRegressor</code>)</div>
+          <div><strong>Frozen Trees:</strong> $N^* = 43$ estimators</div>
+          <div><strong>Features:</strong> 63 Canonical (45 Price + 18 Context, 0 News, 0 Volume, 0 Flow)</div>
+          <div><strong>Prediction Cutoff:</strong> 08:50:00 Asia/Kolkata</div>
+          <div><strong>Target Formula:</strong> $T0 = (\text{Close} / \text{Open}) - 1$</div>
+          <div><strong>Training Window:</strong> 2008-07-08 through 2021-12-31 ($N=3,299$ sessions)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Phase 13 Retrospective Out-of-Sample Findings (2022–2026, N=1,154)</div>
+        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+          <p style="margin-bottom: 0.5rem;">The post-2022 dataset was classified as <strong>Previously Exposed Retrospective Evaluation Data</strong> following historical audit. Retrospective diagnostic results confirmed:</p>
+          <ul style="margin-left: 1.5rem; margin-bottom: 0.5rem;">
+            <li>Pearson IC = +0.0201 ($p = 0.4945$, non-significant at $\alpha = 0.05$).</li>
+            <li>Incremental $R^2 = -0.00357$ vs historical training mean baseline.</li>
+            <li>Net annualized return at 10 bps friction = -13.96% (Sharpe -1.348, Max Drawdown -54.05%).</li>
+          </ul>
+          <p>These findings conclusively disqualified the model from commercial execution, justifying its permanent status as an immutable forward research baseline.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. System Status Tab -->
+    <section id="tab-status" class="tab-pane">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Automated Cloud Operations</div>
+          <div style="font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.8;">
+            <div><strong>Scheduler:</strong> GitHub Actions Cron (Asia/Kolkata)</div>
+            <div><strong>Morning Trigger:</strong> 08:35 AM IST (Pre-market prep)</div>
+            <div><strong>Afternoon Trigger:</strong> 03:40 PM IST (Reconciliation)</div>
+            <div><strong>Current State:</strong> <span id="status-system-state">IMPLEMENTED — WAITING FOR LIVE INPUT</span></div>
+            <div><strong>Last Updated (UTC):</strong> <span id="status-last-updated">--</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Cryptographic Ledger Health</div>
+          <div style="font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.8;">
+            <div><strong>Hash Chaining:</strong> SHA-256 (Genesis rooted)</div>
+            <div><strong>Chain Status:</strong> <span id="status-chain-valid" class="status-badge badge-valid">INTACT</span></div>
+            <div><strong>Current Tip Hash:</strong> <code id="status-tip-hash">00000000...</code></div>
+            <div><strong>Idempotency:</strong> Active (Duplicate detection enforced)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div style="max-width: 1200px; margin: 0 auto;">
+      NIFTY AI Research Program &bull; Autonomous Machine Learning &bull; Zero Live Trading Authorization &bull; Free-Tier Cloud Operations
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

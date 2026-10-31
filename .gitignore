@@ -1,0 +1,121 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets (NEVER commit secrets or API keys)
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Type Checking & Linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Data storage (keep directories via .gitkeep, ignore generated datasets)
+data/raw/*
+!data/raw/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+!data/interim/phase13_steps2_4/
+!data/interim/phase13_steps2_4/**
+!data/interim/phase14_shadow/
+!data/interim/phase14_shadow/**
+data/processed/*
+!data/processed/.gitkeep
+data/features/*
+!data/features/.gitkeep
+
+# Common data file formats
+*.csv
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.sqlite3
+*.db
+
+# Model artifacts and weights
+models/*
+!models/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+*.joblib
+*.pkl
+*.pickle
+*.onnx
+*.pt
+*.pth
+*.bin
+
+# Logs
+logs/
+*.log
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini

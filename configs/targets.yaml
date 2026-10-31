@@ -1,0 +1,48 @@
+target_count: 2
+targets:
+  target_return:
+    name: target_return
+    category: regression
+    mathematical_definition: Close_(T+1) / Close_T - 1
+    horizon: next_trading_session (T+1)
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    information_cutoff: Outcome finalized at 15:30 IST on Day T+1
+    threshold_methodology: null
+    parameters: {}
+    warmup_requirements: 0
+    version: 1.0.0
+    leakage_controls:
+    - Shifted strictly forward (+1 session)
+    - Last historical session target is None (never fabricated)
+    - Zero clipping or winsorization applied
+    - Completely inaccessible to feature generation on Day T
+    description: Continuous close-to-close percentage price return of next trading
+      session.
+  target_direction:
+    name: target_direction
+    category: classification
+    mathematical_definition: UP if target_return > +theta_T; DOWN if target_return
+      < -theta_T; SIDEWAYS if -theta_T <= target_return <= +theta_T
+    horizon: next_trading_session (T+1)
+    snapshot_applicability:
+    - SNAPSHOT_1540
+    - SNAPSHOT_0850
+    information_cutoff: Outcome finalized at 15:30 IST on Day T+1; theta_T finalized
+      by cutoff of T
+    threshold_methodology: volatility_scaled
+    parameters:
+      k: 0.35
+      window: 20
+    warmup_requirements: 20
+    version: 1.0.0
+    leakage_controls:
+    - Dynamic threshold theta_T computed using strictly trailing returns available
+      up to cutoff T
+    - No global future returns or holdout test returns used in threshold estimation
+    - Exact symmetric boundary assignment
+    - Unclassifiable during warm-up period (first window bars)
+    - Terminal row has None direction label
+    description: 3-class directional movement label incorporating dynamic volatility-calibrated
+      threshold.

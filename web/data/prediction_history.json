@@ -1,0 +1,25 @@
+{
+  "total_count": 1,
+  "predictions": [
+    {
+      "cutoff_timestamp": "2026-11-02T08:50:00+05:30",
+      "feature_count": 63,
+      "feature_hash": "ce9943164d27ac8627a4b4a9d6eaa5d858038eb29ca7eb68853a81bcfb873684",
+      "model_name": "Snapshot B T0 Full Development Production Model",
+      "model_sha256": "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df",
+      "predicted_return": 0.0007192066987045109,
+      "predicted_return_bps": 7.192066987045109,
+      "prediction_id": "pred_2026-11-02_0850",
+      "prediction_timestamp": "2026-10-31T20:02:50.778521+00:00",
+      "prev_record_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "provenance_type": "invalid_or_quarantined",
+      "record_hash": "60083e149faf929e7c4681b707513e8a3b1002d920a0d17f51415226cd4f514f",
+      "research_status": "RESEARCH_BASELINE_ONLY",
+      "session_date": "2026-11-02",
+      "snapshot_type": "SNAPSHOT_0850",
+      "target_date": "2026-11-02",
+      "target_id": "T0",
+      "trading_authorized": false
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+model_layer_version: 1.0.0
+development_period:
+  start: '2008-07-08'
+  end: '2021-12-31'
+holdout_period:
+  start: '2022-01-01'
+  end: '2026-09-04'
+classifier:
+  model_type: xgboost_classifier
+  objective: multi:softprob
+  num_class: 3
+  frozen_hyperparameters:
+    learning_rate: 0.1
+    max_depth: 2
+    min_child_weight: 10.0
+    class_weight: null
+  final_n_estimators: 12
+  calibration:
+    enabled: true
+    method: platt_multinomial_logistic
+  classes:
+    '0': DOWN
+    '1': SIDEWAYS
+    '2': UP
+regressor:
+  model_type: xgboost_regressor
+  objective: reg:squarederror
+  frozen_hyperparameters:
+    learning_rate: 0.05
+    max_depth: 2
+    min_child_weight: 20.0
+  final_n_estimators: 43
+  target_definition: next_session_close_to_close_return
+provenance:
+  features_file: nifty50_features_clean.csv
+  features_sha256: afa2e68f50f1ad0f4b1adbbec3df294d474d688dbf481cf53c76c4db0a78914b
+  targets_snapshot_a_file: nifty50_targets_snapshot_a.csv
+  targets_snapshot_a_sha256: a13fed61f92c3fcccf9fe09ce59eb0df4d95ef8dce0aef970ff5ed1220ea055d

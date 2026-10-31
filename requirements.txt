@@ -1,0 +1,18 @@
+# ==============================================================================
+# NIFTY AI - Base Foundation Dependencies
+# ==============================================================================
+# Only basic foundation packages are included at this stage.
+# Specialized ML, deep learning, NLP, and broker dependencies will be added
+# incrementally during later stages of development.
+# ==============================================================================
+
+# Environment and configuration management
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+tzdata>=2024.1; sys_platform == 'win32'
+
+# Testing framework
+pytest>=8.0.0
+
+# Install local package in editable development mode
+-e .

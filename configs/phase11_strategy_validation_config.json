@@ -1,0 +1,195 @@
+{
+  "phase": "Phase 11 — Out-of-Sample Strategy Validation & Paper-Trading Readiness",
+  "created_at_utc": "2026-09-18T13:30:00Z",
+  "status": "PRE_EXECUTION_FROZEN",
+  "model_specification": {
+    "architecture_name": "Model 1 (Price + Context)",
+    "feature_count": 63,
+    "price_feature_count": 45,
+    "context_feature_count": 18,
+    "news_feature_count": 0,
+    "news_features_included": false,
+    "classifier_hyperparameters": {
+      "objective": "multi:softprob",
+      "learning_rate": 0.1,
+      "max_depth": 2,
+      "min_child_weight": 10.0,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "reg_alpha": 0.1,
+      "reg_lambda": 1.0,
+      "n_estimators": 12,
+      "random_state": 42
+    },
+    "regressor_hyperparameters": {
+      "objective": "reg:squarederror",
+      "learning_rate": 0.05,
+      "max_depth": 2,
+      "min_child_weight": 20.0,
+      "subsample": 0.8,
+      "colsample_bytree": 0.7,
+      "reg_alpha": 0.5,
+      "reg_lambda": 2.0,
+      "n_estimators": 43,
+      "random_state": 42
+    }
+  },
+  "sample_partitions": {
+    "development_partition": {
+      "start_date": "2008-07-08",
+      "end_date": "2021-12-31",
+      "session_count": 3299
+    },
+    "oof_validation_partition": {
+      "start_date": "2014-01-02",
+      "end_date": "2021-12-31",
+      "session_count": 1960,
+      "folds": 8,
+      "temporal_blocks": [
+        {"block_name": "2014-2016", "start_date": "2014-01-02", "end_date": "2016-12-31"},
+        {"block_name": "2017-2019", "start_date": "2017-01-02", "end_date": "2019-12-31"},
+        {"block_name": "2020-2021", "start_date": "2020-01-01", "end_date": "2021-12-31"}
+      ]
+    },
+    "terminal_holdout_partition": {
+      "start_date": "2022-01-03",
+      "end_date": "2026-09-03",
+      "session_count": 1154,
+      "governance": "EVALUATION_ONLY_SINGLE_PASS",
+      "temporal_blocks": [
+        {"block_name": "2022-2023", "start_date": "2022-01-03", "end_date": "2023-12-29"},
+        {"block_name": "2024-2026", "start_date": "2024-01-01", "end_date": "2026-09-03"}
+      ]
+    }
+  },
+  "strategy_families": {
+    "Strategy 0": {
+      "name": "No-Signal Baseline (Always Flat)",
+      "type": "baseline",
+      "rule": "position = 0 on all sessions",
+      "parameters": {}
+    },
+    "Strategy 1": {
+      "name": "Regression Direction",
+      "type": "unrestricted_direction",
+      "signal_source": "Model 1 Regressor pred_reg",
+      "rule": "if pred_reg > 0 -> LONG (+1); elif pred_reg < 0 -> SHORT (-1); else -> FLAT (0)",
+      "parameters": {}
+    },
+    "Strategy 2": {
+      "name": "Classifier Direction",
+      "type": "unrestricted_direction",
+      "signal_source": "Model 1 Classifier pred_class",
+      "rule": "if pred_class == UP (2) -> LONG (+1); elif pred_class == DOWN (0) -> SHORT (-1); elif pred_class == SIDEWAYS (1) -> FLAT (0)",
+      "parameters": {}
+    },
+    "Strategy 3": {
+      "name": "Classifier Direction + Confidence Gate",
+      "type": "gated_direction",
+      "signal_source": "Model 1 Classifier calibrated confidence (max_probability)",
+      "pre_registered_thresholds": [0.40, 0.45, 0.50],
+      "rule": "if confidence < threshold -> FLAT (0); elif pred_class == UP (2) -> LONG (+1); elif pred_class == DOWN (0) -> SHORT (-1); else -> FLAT (0)"
+    },
+    "Strategy 4": {
+      "name": "Regression Magnitude Gate",
+      "type": "gated_magnitude",
+      "signal_source": "Model 1 Regressor abs(pred_reg)",
+      "pre_registered_thresholds": [0.0010, 0.0025, 0.0050],
+      "threshold_labels": ["0.10%", "0.25%", "0.50%"],
+      "rule": "if abs(pred_reg) < threshold -> FLAT (0); elif pred_reg > 0 -> LONG (+1); elif pred_reg < 0 -> SHORT (-1); else -> FLAT (0)"
+    },
+    "Strategy 5": {
+      "name": "Phase 10 Regime Diagnostic Only",
+      "type": "diagnostic_comparison",
+      "regime_dimension": "Volatility",
+      "regime_filter": "volatility_ann_20d <= 0.114675 (LOW Volatility)",
+      "rule": "Apply LOW volatility filter to Strategy 1 and Strategy 2 (FLAT when outside LOW volatility). Compare filtered vs unrestricted. Diagnostic only; not authorized as production rule."
+    }
+  },
+  "benchmarks": {
+    "Benchmark 0": "Flat / Cash (0.0% return)",
+    "Benchmark 1": "NIFTY 50 Buy-and-Hold (Continuous Close-to-Close)",
+    "Benchmark 2": "Always-Long Daily Exposure under Primary Execution Convention"
+  },
+  "execution_conventions": {
+    "primary": {
+      "name": "Open-to-Close Intraday Session",
+      "entry_timing": "Session T+1 Open (09:15 IST)",
+      "entry_price": "Open_{T+1}",
+      "exit_timing": "Session T+1 Close (15:30 IST)",
+      "exit_price": "Close_{T+1}",
+      "gross_return_formula": "position * (Close_{T+1} - Open_{T+1}) / Open_{T+1}",
+      "transaction_cost_application": "Applied as round-trip cost on each active session (|position| > 0)",
+      "overnight_holding_risk": "None (flat overnight)"
+    },
+    "secondary_diagnostic": {
+      "name": "Close-to-Close Interday Holding",
+      "entry_timing": "Session T Close (15:30 IST) for A; Session T+1 Open for B",
+      "entry_price": "Close_T",
+      "exit_price": "Close_{T+1}",
+      "gross_return_formula": "position * (Close_{T+1} - Close_T) / Close_T",
+      "transaction_cost_application": "Applied on position changes: abs(position_t - position_{t-1}) * half_round_trip",
+      "overnight_holding_risk": "Full overnight gap risk"
+    }
+  },
+  "transaction_cost_scenarios_bps": [
+    {"label": "0 bps (Gross)", "round_trip_bps": 0.0, "round_trip_fraction": 0.0},
+    {"label": "5 bps Round-Trip", "round_trip_bps": 5.0, "round_trip_fraction": 0.0005},
+    {"label": "10 bps Round-Trip", "round_trip_bps": 10.0, "round_trip_fraction": 0.0010},
+    {"label": "20 bps Round-Trip", "round_trip_bps": 20.0, "round_trip_fraction": 0.0020}
+  ],
+  "position_sizing": {
+    "framework": "Fixed Notional",
+    "gross_exposure": 1.0,
+    "long_scalar": 1.0,
+    "short_scalar": -1.0,
+    "flat_scalar": 0.0,
+    "leverage": 1.0
+  },
+  "snapshot_specifications": {
+    "Snapshot A": {
+      "information_cutoff": "15:30 IST (Day T)",
+      "prediction_generation": "15:40 IST (Day T)",
+      "target_session": "Day T+1",
+      "independence": "Strictly independent from Snapshot B"
+    },
+    "Snapshot B": {
+      "information_cutoff": "08:50 IST (Day T+1)",
+      "prediction_generation": "08:50 IST (Day T+1)",
+      "target_session": "Day T+1",
+      "independence": "Strictly independent from Snapshot A"
+    }
+  },
+  "statistical_robustness_methods": {
+    "time_series_standard_errors": "Newey-West HAC with automatic Bartlett lag selection",
+    "bootstrap_method": "Stationary block bootstrap (Politis & Romano, 1994) with mean block length = 10 sessions",
+    "confidence_level": 0.95
+  },
+  "evidence_classification_categories": [
+    "A) ROBUST ECONOMIC EVIDENCE",
+    "B) WEAK / INCONCLUSIVE ECONOMIC EVIDENCE",
+    "C) NO ECONOMIC EVIDENCE",
+    "D) NEGATIVE AFTER COSTS"
+  ],
+  "protected_artifact_hashes": {
+    "data/features/nifty50_features_clean.csv": "afa2e68f50f1ad0f4b1adbbec3df294d474d688dbf481cf53c76c4db0a78914b",
+    "data/targets/nifty50_targets_snapshot_a.csv": "a13fed61f92c3fcccf9fe09ce59eb0df4d95ef8dce0aef970ff5ed1220ea055d",
+    "data/targets/nifty50_targets_snapshot_b.csv": "54ac54fdeafd53ddea20b1d31cd89c1fbaebdbc88c0f24f8a1f73ce2867e01d2",
+    "data/interim/context/snapshot_a_context_daily.csv": "26f41d5978b2f78fb9fad223d9efe9970820ab7f81510490ed6f1b39872178af",
+    "data/interim/context/snapshot_b_context_daily.csv": "08a694f86f70c5246b8b6b4928283b676dd998912e481d88a718ba08970237be",
+    "data/interim/news/features_news_snapshot_a.csv": "487ce996f039867959fefc0bc6ea54e0b9b9d4c39e2a09a44944fa87c408f4f7",
+    "data/interim/news/features_news_snapshot_b.csv": "f57137c0244e97e816ed5d8eef7b0afd39d309e5f68327a230747eadab423606",
+    "data/interim/news/phase9_step4_oof_results.csv": "62b88a1689c7ed57e1ddf79ca0064356eec5d2a16e00f7975998a155141f02d8",
+    "data/interim/news/phase9_step4_holdout_results.csv": "4359edb7e585053c676e444d958a4265c584b9b13a58c89dd38067fc0bc41967",
+    "data/interim/news/phase9_step4_experiment_results.csv": "7d0f39f7ce8a50b6f8b1591dc6ce9b3a4af8f75507531740a06147cb4aedffc3",
+    "configs/phase9_step4_experiment_config.json": "8940206588dad34eb5a9d2fdb01ecbfeb629930374a733c15d077b2281ae7547",
+    "data/interim/regime/phase10_regime_performance.csv": "a4a0eda897d97e81d8e2ebadac169cb8e476609506553802dc98e5cd5db62024",
+    "data/interim/regime/phase10_temporal_stability.csv": "f9e04538bf3eca7ff00861a2728bd770c1d17fa1a10d4319e10a84788d16bf17",
+    "data/interim/regime/phase10_error_analysis.csv": "9b5091538f37ad2a6c4d6598a616c20d6cebb82b8dae0abb97d287119e5d2d3d",
+    "data/interim/regime/phase10_confidence_calibration.csv": "06b784ef89e19528bfa4d5fbca4d5c5718f2b87403bdc4c914dee0d34fdaa82f",
+    "data/interim/regime/phase10_feature_importance.csv": "d276270720829419a7b4b5d6ff5807cc7e59df4762b6e2f549f7b5d48c80af21",
+    "data/interim/regime/phase10_shap_summary.csv": "71e899b599a443d152350460dc96dd3334465b71c8e6388613b08d44098a070a",
+    "configs/phase10_regime_explainability_config.json": "9230e238172bac572bd01451fb848a960dd7676191737833029be90cea1af3f1",
+    "docs/PHASE_10_REGIME_EXPLAINABILITY_ERROR_ANALYSIS_REPORT.md": "282c65112a64e4a547cab6e82861f1ec513c7a833c738ce8a9524f8d88ed5c8a"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "phase": "Phase 14",
+  "title": "Operational Readiness Gate Manifest",
+  "generated_timestamp_utc": "2026-10-31T15:13:05.695813+00:00",
+  "readiness_verdict": "READY FOR FIRST PROSPECTIVE SESSION",
+  "target_session": "2026-11-02",
+  "artifact_hashes": {
+    "docs/PHASE_14_OPERATIONAL_READINESS_REPORT.md": "96cde8873411dc0192eaa68b7c4f73ee4e55c48fe1e13f5ff2897abeeccadf66",
+    "docs/PHASE_14_FIRST_SESSION_RUNBOOK.md": "aefd2b8bf4d0bacf63424d546f17529e77b0d26a75cf9cc8171201f3f716da33",
+    "data/interim/phase14_shadow/operational_readiness.json": "42bc32742130a4b63fdb205b2de17e89c1b15850706c16e27eb95cb0fb554ad1"
+  },
+  "upstream_protected_manifest_hashes": {
+    "phase13_step1": "b6eb9dff137fde20eceea78e9613523ae48b63a5b87ba9e1511af321e85f1580",
+    "phase13_steps2_4": "220be19af2578e0af1392535fdab52de83b1a7f5a92fff14b17983c4ce766d18",
+    "phase13_step5": "c35cbbb410adf1415e5118a215f84f0bcf3ba27ca9c153c0a7fd4a36d82045dc",
+    "phase14_protocol": "e4094baa3f28d06ecb71925167698733617e7877d2a8b8520e684c4fb0cf366e"
+  }
+}

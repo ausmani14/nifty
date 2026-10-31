@@ -1,0 +1,38 @@
+{
+  "audit_timestamp_utc": "2026-10-31T14:22:47.097074+00:00",
+  "audit_status": "COMPLETE",
+  "exposure_classification": "PREVIOUSLY EXPOSED RETROSPECTIVE EVALUATION DATA",
+  "is_genuinely_untouched_confirmatory_holdout": false,
+  "is_retrospective_evaluation_permissible": true,
+  "rationale": "The 2022+ terminal partition (2022-01-03 to 2026-09-03, N=1,154 sessions) was previously loaded, evaluated, and published in Phase 9 Step 4 (news incremental value), Phase 10 (regime diagnostics), and Phase 11 Stage 2 (strategy evaluation). Most crucially, the catastrophic failure of Model 1 on the 2022+ holdout under Open-to-Close execution (-27.17% net loss) was the direct, formative impetus for creating Phase 12 (Target Redesign). Therefore, the 2022+ dataset cannot be scientifically represented as a pristine, untouched confirmatory holdout. However, the dedicated Snapshot B T0 model (trained on Open-to-Close returns with N*=43) was never trained on or evaluated against the 2022+ period. A frozen, non-optimized evaluation of this model on the 2022+ partition is scientifically permissible strictly as a RETROSPECTIVE OUT-OF-SAMPLE EVALUATION.",
+  "specific_inquiries": {
+    "1_targets_previously_read_or_calculated": {
+      "status": "CONFIRMED EXPOSED",
+      "details": "Phase 5 generated Close-to-Close targets; Phase 9, 10, 11 loaded and evaluated targets through 2026-09-04."
+    },
+    "2_predictions_previously_generated": {
+      "status": "CONFIRMED EXPOSED",
+      "details": "Phase 9 Step 4 generated Model 0-3 predictions; Phase 10 generated Model 1 diagnostics; Phase 11 generated strategy trade signals."
+    },
+    "3_metrics_or_returns_previously_calculated": {
+      "status": "CONFIRMED EXPOSED",
+      "details": "Phase 9 calculated LogLoss and IC; Phase 10 calculated RMSE and regime IC; Phase 11 calculated trading returns and Sharpe ratios."
+    },
+    "4_influenced_subsequent_decisions": {
+      "status": "CONFIRMED EXPOSED (HIGH INFLUENCE)",
+      "details": "Phase 9 holdout results sealed the exclusion of News features; Phase 11 holdout strategy collapse directly triggered the Phase 12 target redesign."
+    },
+    "5_snapshot_b_t0_specifically_evaluated": {
+      "status": "PARTIALLY EXPOSED",
+      "details": "The realized T0 return series was traded in Phase 11, but using predictions from a T1-trained model. A model trained specifically on T0 has never been evaluated on 2022+."
+    },
+    "6_phase13_step1_protocol_assumption": {
+      "status": "INACCURATE ASSUMPTION IDENTIFIED & RECONCILED",
+      "details": "Phase 13 Step 1 labeled 2022+ an 'untouched confirmatory holdout'. This label was historically inaccurate. The protocol remains computationally valid under the corrected 'PREVIOUSLY EXPOSED RETROSPECTIVE EVALUATION DATA' classification."
+    }
+  },
+  "gate_decision": {
+    "decision": "PROCEED_TO_STAGE_B_UNDER_RETROSPECTIVE_CLASSIFICATION",
+    "mandatory_condition": "All findings must be strictly reported as retrospective out-of-sample diagnostics with zero claim of untouched confirmatory validation."
+  }
+}

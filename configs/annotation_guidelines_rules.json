@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "nifty_ai_annotation_guidelines_rules",
+  "version": "1.1.0",
+  "revision_date": "2026-09-15",
+  "description": "Machine-readable operational rules for Phase 8 corporate announcement annotation",
+  "multi_event_precedence": {
+    "waterfall": [
+      "EARNINGS_RESULTS",
+      "DIVIDEND",
+      "M_AND_A",
+      "MANAGEMENT_CHANGE",
+      "CORPORATE_ACTION",
+      "OTHER"
+    ],
+    "dividend_exception": {
+      "condition": "Filing is solely a dividend recommendation or announcement without accompanying financial results or figures",
+      "action": "Classify strictly as DIVIDEND, not EARNINGS_RESULTS"
+    },
+    "secondary_events": {
+      "supported": true,
+      "max_count": 3,
+      "rule": "Capture concurrent material events as secondary labels where schema permits"
+    }
+  },
+  "esop_fundraising_materiality": {
+    "esop_dilution_threshold_pct": 0.1,
+    "below_threshold": {
+      "primary_event": "CORPORATE_ACTION",
+      "importance_range": [
+        1,
+        2
+      ],
+      "default_sentiment": "NEUTRAL",
+      "override_condition": "Explicit economically material information indicates otherwise"
+    },
+    "fundraising_reservation": {
+      "description": "Reserved strictly for material external capital infusions",
+      "eligible_types": [
+        "Qualified Institutional Placement (QIP)",
+        "Rights Issue",
+        "Preferential Allotment to Promoters / Private Equity",
+        "Global Depository Receipts (GDR/ADR)",
+        "Material Public Debt / Bond Offering"
+      ]
+    },
+    "missing_denominator_fallback": {
+      "rule": "Do NOT blindly apply 0.1% threshold when total share capital denominator is absent",
+      "action": "Evaluate textual economic materiality evidence, assign conservative importance (2), flag confidence MEDIUM or LOW"
+    }
+  },
+  "management_change": {
+    "substantive_event_rule": "Director appointment, resignation, cessation, or demise must NOT be classified as EARNINGS_RESULTS merely because of board meeting reference",
+    "required_event": "MANAGEMENT_CHANGE",
+    "director_demise_calibration": {
+      "sentiment": "NEUTRAL",
+      "importance": 2,
+      "relevance": "LOW",
+      "rationale": "Emotional wording does not imply equity financial impairment unless irreplaceable key executive departure"
+    }
+  },
+  "other_category_boundaries": {
+    "usage_rule": "OTHER must be used ONLY when filing cannot logically map to 17 substantive canonical primary-event categories",
+    "substance_first_press_releases": {
+      "rule": "Examine actual economic substance of press release before assigning OTHER",
+      "mappings": {
+        "commercial_contracts_client_deals": "ORDER_CONTRACT",
+        "plant_commissioning_capacity_expansion": "CAPEX_BUSINESS_UPDATE",
+        "strikes_disruptions_inspections": "OPERATIONAL_EVENT",
+        "legal_orders_penalties_appeals": "REGULATORY_LEGAL",
+        "capital_alteration_record_dates_book_closure": "CORPORATE_ACTION"
+      }
+    },
+    "procedural_secretarial_only": "Only purely procedural secretarial notifications with zero operational substance map to OTHER"
+  },
+  "supplementary_rules": {
+    "bond_final_redemption": {
+      "rule": "Trading suspension on account of final redemption at maturity is planned debt retirement, not adverse event",
+      "sentiment": "NEUTRAL",
+      "importance": 2,
+      "primary_event": "CORPORATE_ACTION"
+    },
+    "preference_share_dividends": {
+      "rule": "Evaluate preferred dividends in face-value context; standard contractual yield is non-negative",
+      "sentiment_options": [
+        "POSITIVE",
+        "NEUTRAL"
+      ],
+      "importance": 2,
+      "primary_event": "DIVIDEND"
+    },
+    "subsidiary_incorporation": {
+      "rule": "Routine formation of wholly owned subsidiary is standard expansion; cap at importance 3",
+      "importance_ceiling": 3,
+      "primary_event": "CAPEX_BUSINESS_UPDATE"
+    }
+  }
+}

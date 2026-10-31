@@ -1,0 +1,19 @@
+{
+  "phase": "Phase 14 Step 1",
+  "title": "Prospective Research Protocol Freeze Manifest",
+  "generated_timestamp_utc": "2026-10-31T14:51:18.725743+00:00",
+  "activation_boundary_utc": "2026-10-31T14:47:00Z",
+  "timezone": "Asia/Kolkata",
+  "frozen_model_sha256": "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df",
+  "frozen_meta_sha256": "d64fee485721cc4e2596e8fd10039d9ea2a7e41ce84b90e19b6bd994ea5d7f33",
+  "feature_count": 63,
+  "protocol_artifacts": {
+    "docs/PHASE_14_STEP1_PROSPECTIVE_PROTOCOL.md": "91f4a54fc27bb0dbbd84f07293f3185e3aae9b972b924c49f2b0bf4bfa5be3a1",
+    "configs/phase14_shadow_validation.yaml": "0dad102528051c12733ab42c44794b0661712e3cb018c63a076eb61a9caa5585"
+  },
+  "upstream_sealed_manifests": {
+    "phase13_step1": "b6eb9dff137fde20eceea78e9613523ae48b63a5b87ba9e1511af321e85f1580",
+    "phase13_steps2_4": "220be19af2578e0af1392535fdab52de83b1a7f5a92fff14b17983c4ce766d18",
+    "phase13_step5": "c35cbbb410adf1415e5118a215f84f0bcf3ba27ca9c153c0a7fd4a36d82045dc"
+  }
+}

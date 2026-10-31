@@ -1,0 +1,60 @@
+# Phase 14: Prospective Shadow Prediction & Forward Validation Configuration
+# Governance: Strictly RESEARCH_BASELINE_ONLY. Zero live order routing authorized.
+
+system:
+  phase: "Phase 14"
+  title: "Prospective Shadow Prediction & Forward Validation System"
+  version: "1.0.0"
+  activation_boundary_utc: "2026-10-31T14:47:00Z"
+  timezone: "Asia/Kolkata"
+  research_status: "RESEARCH_BASELINE_ONLY"
+  trading_authorized: false
+
+frozen_model:
+  model_name: "Snapshot B T0 Full Development Production Model"
+  architecture: "xgboost.XGBRegressor"
+  artifact_path: "data/interim/phase13_steps2_4/models/snapshot_b_t0_primary_model.json"
+  meta_path: "data/interim/phase13_steps2_4/models/snapshot_b_t0_primary_model.meta.json"
+  model_sha256: "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df"
+  n_estimators: 43
+  learning_rate: 0.05
+  max_depth: 2
+  feature_count: 63
+  training_cutoff: "2021-12-31"
+
+information_contract:
+  snapshot_type: "SNAPSHOT_0850"
+  cutoff_time_ist: "08:50:00"
+  total_features: 63
+  price_features_count: 45
+  context_features_count: 18
+  forbidden_features:
+    news_count: 0
+    volume_count: 0
+    flow_count: 0
+  forbidden_fields:
+    - "current_session_open"
+    - "current_session_high"
+    - "current_session_low"
+    - "current_session_close"
+    - "current_session_return"
+
+target_contract:
+  target_id: "T0"
+  description: "Same-session intraday Open-to-Close return"
+  formula: "(Session_Close / Session_Open) - 1"
+  realization_cutoff_ist: "15:30:00"
+  calendar: "NSE"
+
+ledger:
+  base_dir: "data/interim/phase14_shadow"
+  predictions_ledger: "data/interim/phase14_shadow/shadow_predictions_ledger.jsonl"
+  outcomes_ledger: "data/interim/phase14_shadow/shadow_outcomes_ledger.jsonl"
+  validation_reports_dir: "data/interim/phase14_shadow/validation_reports"
+  audit_manifest: "data/interim/phase14_shadow/shadow_ledger_manifest.json"
+
+checkpoints:
+  operational_review_n: 60
+  interim_diagnostic_n: 120
+  annual_statistical_evaluation_n: 252
+  promotion_decision_permitted_at_checkpoints: false

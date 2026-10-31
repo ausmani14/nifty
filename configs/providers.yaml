@@ -1,0 +1,51 @@
+# Provider Configuration Registry for NIFTY AI
+# Providers can be configured here without modifying Python source code.
+# Secrets/API keys must NEVER be stored in this file; use environment variables.
+
+providers:
+  market_data:
+    active_provider: "yahoo_finance"
+    available:
+      nse_official:
+        tier: "official"
+        status: "reference"
+        description: "National Stock Exchange of India official bhavcopy and archive reports."
+        requires_credentials: false
+        symbols:
+          - "NIFTY 50"
+          - "NIFTY BANK"
+          - "INDIA VIX"
+      yahoo_finance:
+        tier: "free"
+        status: "development"
+        description: "Yahoo Finance historical daily data adapter for development."
+        requires_credentials: false
+        symbols:
+          - "^NSEI"
+          - "^NSEBANK"
+          - "^INDIAVIX"
+
+  macro_data:
+    active_provider: "global_macro_adapter"
+    available:
+      global_macro_adapter:
+        tier: "free"
+        status: "planned"
+        description: "Composite global and macro indicator provider (crude oil, DXY, US yields)."
+        requires_credentials: false
+        indicators:
+          - "BRENT_CRUDE"
+          - "WTI_CRUDE"
+          - "USD_INR"
+          - "DXY"
+          - "US_10Y_YIELD"
+
+  news_data:
+    active_provider: "financial_news_adapter"
+    available:
+      financial_news_adapter:
+        tier: "free"
+        status: "planned"
+        description: "Financial news and economic headline aggregator."
+        requires_credentials: true
+        api_key_env_var: "NEWS_API_KEY"

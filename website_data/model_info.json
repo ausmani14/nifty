@@ -1,0 +1,16 @@
+{
+  "model_name": "Snapshot B T0 Full Development Production Model",
+  "algorithm": "xgboost.XGBRegressor",
+  "model_classification": "RESEARCH BASELINE ONLY",
+  "production_promotion_status": "REJECTED (Phase 13 Step 5 Decision Gate)",
+  "live_trading_authorized": false,
+  "target": "Snapshot B T0 (Intraday Return: Close / Open - 1)",
+  "information_cutoff": "08:50:00 Asia/Kolkata",
+  "training_boundary": "2008-07-08 to 2021-12-31 (N=3,299)",
+  "frozen_tree_count": 43,
+  "total_feature_count": 63,
+  "price_feature_count": 45,
+  "context_feature_count": 18,
+  "forbidden_features": "News, Volume, and Flow features strictly excluded",
+  "governance_disclaimer": "NIFTY AI daytime return models operate strictly as research baselines. Retrospective out-of-sample evaluation demonstrated an unhedged Pearson IC of +0.0201 (p=0.4945) and negative net returns under realistic market frictions. Forecasts are observational research only and do not constitute trading signals or financial advice."
+}

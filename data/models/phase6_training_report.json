@@ -1,0 +1,341 @@
+{
+  "timestamp": "2026-09-14T17:02:14.895677+00:00",
+  "development_period": {
+    "start": "2008-07-08",
+    "end": "2021-12-31",
+    "samples": 3299
+  },
+  "holdout_period": {
+    "start": "2022-01-01",
+    "end": "2026-09-03",
+    "samples": 1154
+  },
+  "classifier": {
+    "frozen_parameters": {
+      "learning_rate": 0.1,
+      "max_depth": 2,
+      "min_child_weight": 10.0,
+      "class_weight": null
+    },
+    "final_n_estimators": 12,
+    "development_oof_metrics": {
+      "total_samples": 1960,
+      "log_loss": 1.08229,
+      "brier_score": 0.65636,
+      "expected_calibration_error": 0.02747,
+      "accuracy": 0.398,
+      "macro_f1": 0.3303,
+      "weighted_f1": 0.3479,
+      "per_class": {
+        "DOWN": {
+          "precision": 0.3273,
+          "recall": 0.2104,
+          "f1": 0.2561,
+          "support": 599
+        },
+        "SIDEWAYS": {
+          "precision": 0.4785,
+          "recall": 0.1318,
+          "f1": 0.2066,
+          "support": 592
+        },
+        "UP": {
+          "precision": 0.4079,
+          "recall": 0.749,
+          "f1": 0.5282,
+          "support": 769
+        }
+      },
+      "confusion_matrix": [
+        [
+          126,
+          33,
+          440
+        ],
+        [
+          118,
+          78,
+          396
+        ],
+        [
+          141,
+          52,
+          576
+        ]
+      ]
+    },
+    "development_oof_calibrated_metrics": {
+      "total_samples": 1960,
+      "log_loss": 1.07904,
+      "brier_score": 0.65419,
+      "expected_calibration_error": 0.01531,
+      "accuracy": 0.4046,
+      "macro_f1": 0.2718,
+      "weighted_f1": 0.2963,
+      "per_class": {
+        "DOWN": {
+          "precision": 0.3125,
+          "recall": 0.0083,
+          "f1": 0.0163,
+          "support": 599
+        },
+        "SIDEWAYS": {
+          "precision": 0.4391,
+          "recall": 0.1706,
+          "f1": 0.2457,
+          "support": 592
+        },
+        "UP": {
+          "precision": 0.4008,
+          "recall": 0.8934,
+          "f1": 0.5534,
+          "support": 769
+        }
+      },
+      "confusion_matrix": [
+        [
+          5,
+          52,
+          542
+        ],
+        [
+          6,
+          101,
+          485
+        ],
+        [
+          5,
+          77,
+          687
+        ]
+      ]
+    },
+    "development_majority_baseline": {
+      "total_samples": 1960,
+      "log_loss": 1.09156,
+      "brier_score": 0.66182,
+      "expected_calibration_error": 0.0092,
+      "accuracy": 0.3923,
+      "macro_f1": 0.1879,
+      "weighted_f1": 0.2211,
+      "per_class": {
+        "DOWN": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 599
+        },
+        "SIDEWAYS": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 592
+        },
+        "UP": {
+          "precision": 0.3923,
+          "recall": 1.0,
+          "f1": 0.5636,
+          "support": 769
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          599
+        ],
+        [
+          0,
+          0,
+          592
+        ],
+        [
+          0,
+          0,
+          769
+        ]
+      ]
+    },
+    "holdout_metrics": {
+      "total_samples": 1154,
+      "log_loss": 1.08847,
+      "brier_score": 0.66052,
+      "expected_calibration_error": 0.03345,
+      "accuracy": 0.3752,
+      "macro_f1": 0.2374,
+      "weighted_f1": 0.2534,
+      "per_class": {
+        "DOWN": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 371
+        },
+        "SIDEWAYS": {
+          "precision": 0.4038,
+          "recall": 0.1193,
+          "f1": 0.1842,
+          "support": 352
+        },
+        "UP": {
+          "precision": 0.3724,
+          "recall": 0.9072,
+          "f1": 0.528,
+          "support": 431
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          22,
+          349
+        ],
+        [
+          0,
+          42,
+          310
+        ],
+        [
+          0,
+          40,
+          391
+        ]
+      ]
+    },
+    "holdout_majority_baseline": {
+      "total_samples": 1154,
+      "log_loss": 1.09512,
+      "brier_score": 0.6643,
+      "expected_calibration_error": 0.00966,
+      "accuracy": 0.3735,
+      "macro_f1": 0.1813,
+      "weighted_f1": 0.2031,
+      "per_class": {
+        "DOWN": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 371
+        },
+        "SIDEWAYS": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 352
+        },
+        "UP": {
+          "precision": 0.3735,
+          "recall": 1.0,
+          "f1": 0.5438,
+          "support": 431
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          371
+        ],
+        [
+          0,
+          0,
+          352
+        ],
+        [
+          0,
+          0,
+          431
+        ]
+      ]
+    },
+    "statistical_test_vs_baseline": {
+      "mean_loss_diff": 0.0066491867079020725,
+      "ci_lower": -0.0013094820974245737,
+      "ci_upper": 0.016255972790789833,
+      "cohens_d": 0.053331536071120594,
+      "significant_at_05": false,
+      "interpretation": "Difference not statistically significant; 95% CI spans zero: [-0.00131, 0.01626], Cohen's d = 0.053."
+    }
+  },
+  "regressor": {
+    "frozen_parameters": {
+      "learning_rate": 0.05,
+      "max_depth": 2,
+      "min_child_weight": 20.0
+    },
+    "final_n_estimators": 43,
+    "development_oof_metrics": {
+      "total_samples": 1960,
+      "mae": 0.007179,
+      "rmse": 0.010737,
+      "r2_score": 0.007244,
+      "pearson_ic": 0.09995,
+      "pearson_ic_pvalue": 9e-06,
+      "spearman_ic": 0.09661,
+      "spearman_ic_pvalue": 1.8e-05,
+      "directional_accuracy": 0.5546,
+      "mean_error": -0.000272,
+      "error_stdev": 0.010736,
+      "error_skewness": 1.1898,
+      "error_kurtosis": 19.3199
+    },
+    "development_zero_baseline": {
+      "total_samples": 1960,
+      "mae": 0.007239,
+      "rmse": 0.010792,
+      "r2_score": -0.002998,
+      "pearson_ic": 0.0,
+      "pearson_ic_pvalue": 1.0,
+      "spearman_ic": 0.0,
+      "spearman_ic_pvalue": 1.0,
+      "directional_accuracy": 0.0015,
+      "mean_error": -0.00059,
+      "error_stdev": 0.010779,
+      "error_skewness": 1.1541,
+      "error_kurtosis": 18.9965
+    },
+    "holdout_metrics": {
+      "total_samples": 1154,
+      "mae": 0.00629,
+      "rmse": 0.008659,
+      "r2_score": 0.000211,
+      "pearson_ic": 0.02943,
+      "pearson_ic_pvalue": 0.317888,
+      "spearman_ic": 0.0599,
+      "spearman_ic_pvalue": 0.041918,
+      "directional_accuracy": 0.5234,
+      "mean_error": -4e-06,
+      "error_stdev": 0.008663,
+      "error_skewness": 0.3663,
+      "error_kurtosis": 4.2222
+    },
+    "holdout_zero_baseline": {
+      "total_samples": 1154,
+      "mae": 0.006305,
+      "rmse": 0.008665,
+      "r2_score": -0.001211,
+      "pearson_ic": 0.0,
+      "pearson_ic_pvalue": 1.0,
+      "spearman_ic": 0.0,
+      "spearman_ic_pvalue": 1.0,
+      "directional_accuracy": 0.0009,
+      "mean_error": -0.000301,
+      "error_stdev": 0.008664,
+      "error_skewness": 0.3588,
+      "error_kurtosis": 4.0432
+    },
+    "diebold_mariano_test_vs_zero": {
+      "test_statistic": 0.9140600991772482,
+      "p_value": 0.3606852671112837,
+      "mean_loss_diff": 1.5101790900859171e-05,
+      "hac_standard_error": 1.652166079063335e-05,
+      "confidence_interval_95": [
+        -1.728066424878219e-05,
+        4.748424605050053e-05
+      ],
+      "hln_corrected_statistic": 0.913663973438525,
+      "hln_p_value": 0.36108445289709357,
+      "interpretation": "No statistically significant difference in forecast accuracy (p >= 0.05)."
+    }
+  }
+}

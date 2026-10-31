@@ -1,0 +1,158 @@
+name: NIFTY AI Daily Shadow Operations
+
+on:
+  schedule:
+    # 03:05 UTC = 08:35 AM IST (Monday to Friday) -> Pre-market Snapshot B preparation
+    - cron: '5 3 * * 1-5'
+    # 10:10 UTC = 03:40 PM IST (Monday to Friday) -> Post-market Outcome Reconciliation
+    - cron: '10 10 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to execute'
+        required: true
+        type: choice
+        options:
+          - snapshot_b
+          - reconcile_outcomes
+          - health_check
+          - dry_run
+        default: snapshot_b
+      session_date:
+        description: 'Optional session date (YYYY-MM-DD, defaults to current IST date)'
+        required: false
+        type: string
+        default: ''
+      input_file:
+        description: 'Optional point-in-time input vector JSON path'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: nifty-ai-daily-shadow-ops
+  cancel-in-progress: false
+
+jobs:
+  execute-operation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@39cd14951b08e74b54015eac00f074f16fc18230 # v5.1.1
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Determine Operation
+        id: op_select
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "OP=${{ github.event.inputs.operation }}" >> $GITHUB_OUTPUT
+            echo "DATE_ARG=${{ github.event.inputs.session_date }}" >> $GITHUB_OUTPUT
+            echo "FILE_ARG=${{ github.event.inputs.input_file }}" >> $GITHUB_OUTPUT
+          else
+            # Scheduled triggers: Check UTC hour to distinguish morning vs afternoon
+            UTC_HOUR=$(date -u +%H)
+            if [ "$UTC_HOUR" -lt 8 ]; then
+              echo "OP=snapshot_b" >> $GITHUB_OUTPUT
+            else
+              echo "OP=reconcile_outcomes" >> $GITHUB_OUTPUT
+            fi
+            echo "DATE_ARG=" >> $GITHUB_OUTPUT
+            echo "FILE_ARG=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Daily Operations CLI
+        env:
+          OP: ${{ steps.op_select.outputs.OP }}
+          DATE_ARG: ${{ steps.op_select.outputs.DATE_ARG }}
+          FILE_ARG: ${{ steps.op_select.outputs.FILE_ARG }}
+        run: |
+          ARGS=("--operation" "$OP")
+          if [ -n "$DATE_ARG" ]; then
+            ARGS+=("--session-date" "$DATE_ARG")
+          fi
+          if [ -n "$FILE_ARG" ]; then
+            ARGS+=("--input-file" "$FILE_ARG")
+          fi
+          echo "Executing: python scripts/run_daily_ops.py ${ARGS[*]}"
+          python scripts/run_daily_ops.py "${ARGS[@]}"
+
+      - name: Verify Ledger and Export Files
+        run: |
+          python scripts/verify_shadow_ledger.py
+          python scripts/export_website_data.py
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Stage only validated ledger files and website JSON data (both root and web/)
+          git add index.html \
+                  data/interim/phase14_shadow/shadow_predictions_ledger.jsonl \
+                  data/interim/phase14_shadow/shadow_outcomes_ledger.jsonl \
+                  website_data/ \
+                  web/data/ || true
+
+          if git diff --staged --quiet; then
+            echo "No ledger or website data changes to commit."
+          else
+            git commit -m "Auto: Update shadow ledgers and website data [skip ci]"
+            # Pull rebase in case of concurrent updates, retry bounded up to 3 times
+            for i in 1 2 3; do
+              git pull --rebase origin main || git pull --rebase origin master || true
+              if git push; then
+                echo "Successfully pushed updates to repository."
+                break
+              fi
+              sleep 5
+            done
+          fi
+
+      - name: Setup GitHub Pages
+        if: success()
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+        continue-on-error: true
+
+      - name: Upload GitHub Pages Artifact
+        if: success()
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: 'web'
+        continue-on-error: true
+
+      - name: Deploy to GitHub Pages
+        if: success()
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+        continue-on-error: true
+
+      - name: Generate Workflow Summary
+        if: always()
+        run: |
+          echo "### NIFTY AI Daily Operations Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Operation**: \`${{ steps.op_select.outputs.OP }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp (UTC)**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -f "website_data/latest_prediction.json" ]; then
+            echo "- **Prediction Status**: \`$(jq -r .prediction_status website_data/latest_prediction.json)\`" >> $GITHUB_STEP_SUMMARY
+          fi

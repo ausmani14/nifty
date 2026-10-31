@@ -1,0 +1,22 @@
+{
+  "new_artifact_sha": "5d5daf5ed7c844e86d45dc6a893f03b1d4f523183e29200d94b592329136f6fd",
+  "total_records": 41371,
+  "by_year": {
+    "2022": 8548,
+    "2023": 9652,
+    "2024": 10436,
+    "2025": 7382,
+    "2026": 5353
+  },
+  "by_snapshot": {
+    "SNAPSHOT_B": 30299,
+    "SNAPSHOT_A": 11072
+  },
+  "companies_with_records_count": 55,
+  "zero_record_companies_count": 1,
+  "zero_record_companies": [
+    "LTIM"
+  ],
+  "hdfclife_records": 501,
+  "all_contaminations_zero": true
+}

@@ -1,0 +1,161 @@
+{
+  "spec_version": "1.0.0",
+  "created_at": "2026-09-15T16:45:00+05:30",
+  "source_corpus": {
+    "path": "data/interim/news/raw_authentic_news_inventory.jsonl",
+    "record_count": 62329,
+    "sha256": "6134fd770b30abe70ed1a839968ce165176e920f5e742651923d3749709ab7b3",
+    "historical_scope": "2008-2021",
+    "unique_companies": 77,
+    "covered_constituent_years": 670,
+    "total_required_constituent_years": 676,
+    "coverage_percentage": 99.11
+  },
+  "sampling_parameters": {
+    "random_seed": 42,
+    "primary_recommended_sample_size": 1200,
+    "minimum_acceptable_sample_size": 800,
+    "development_sample_size": 1000,
+    "holdout_sample_size": 200,
+    "pilot_sample_size": 50
+  },
+  "strata_definitions": {
+    "calendar_years": {
+      "dimension": "published_timestamp_year",
+      "bins": [
+        "2008",
+        "2009",
+        "2010",
+        "2011",
+        "2012",
+        "2013",
+        "2014",
+        "2015",
+        "2016",
+        "2017",
+        "2018",
+        "2019",
+        "2020",
+        "2021"
+      ],
+      "allocation_strategy": "proportional_with_floor",
+      "minimum_per_bin": 40
+    },
+    "sectors": {
+      "dimension": "sector",
+      "categories": [
+        "NIFTY_BANK",
+        "NIFTY_IT",
+        "NIFTY_OIL_GAS",
+        "NIFTY_AUTO",
+        "NIFTY_METALS",
+        "NIFTY_PHARMA",
+        "NIFTY_FMCG",
+        "NIFTY_INFRA",
+        "NIFTY_FIN_SERVICE",
+        "NIFTY_TELECOM",
+        "NIFTY_CONSUMPTION",
+        "NIFTY_MEDIA",
+        "NIFTY_CHEM"
+      ],
+      "allocation_strategy": "proportional_with_floor",
+      "minimum_per_category": 25
+    },
+    "execution_snapshots": {
+      "dimension": "pit_eligibility",
+      "categories": {
+        "SNAPSHOT_A": {
+          "target_ratio": 0.45,
+          "description": "Market-hours disclosures evaluated at 15:30 IST"
+        },
+        "SNAPSHOT_B": {
+          "target_ratio": 0.55,
+          "description": "Overnight disclosures evaluated at 08:50 IST"
+        }
+      }
+    },
+    "document_length_tiers": {
+      "dimension": "character_length",
+      "tiers": {
+        "TIER_1_SHORT": {
+          "range": [
+            0,
+            250
+          ],
+          "target_ratio": 0.25
+        },
+        "TIER_2_MEDIUM": {
+          "range": [
+            251,
+            600
+          ],
+          "target_ratio": 0.5
+        },
+        "TIER_3_LONG": {
+          "range": [
+            601,
+            100000
+          ],
+          "target_ratio": 0.25
+        }
+      }
+    },
+    "market_regimes": {
+      "dimension": "historical_regime",
+      "regimes": {
+        "REGIME_1_GFC": {
+          "years": [
+            2008,
+            2009
+          ],
+          "description": "Global Financial Crisis / High Volatility"
+        },
+        "REGIME_2_EURO_DEBT_INFLATION": {
+          "years": [
+            2010,
+            2011,
+            2012
+          ],
+          "description": "European Debt Crisis & Domestic Inflation"
+        },
+        "REGIME_3_STRUCTURAL_BULL": {
+          "years": [
+            2013,
+            2014,
+            2015,
+            2016,
+            2017
+          ],
+          "description": "Macro Recovery & Structural Reforms"
+        },
+        "REGIME_4_NBFC_CRISIS": {
+          "years": [
+            2018,
+            2019
+          ],
+          "description": "Domestic Credit Squeeze & IL&FS Fallout"
+        },
+        "REGIME_5_COVID_PANDEMIC": {
+          "years": [
+            2020,
+            2021
+          ],
+          "description": "Pandemic Shock & Global Liquidity Expansion"
+        }
+      }
+    }
+  },
+  "anti_bias_controls": {
+    "prohibit_model_predictions_in_sampling": true,
+    "prohibit_keyword_rule_interest_filtering": true,
+    "require_pure_stratified_random_draw": true,
+    "forbid_price_movement_correlation": true
+  },
+  "quality_filters": {
+    "minimum_headline_length": 15,
+    "minimum_body_length": 20,
+    "require_valid_timestamp_timezone": "Asia/Kolkata",
+    "require_valid_url_domain": "nseindia.com",
+    "require_canonical_company_symbol": true
+  }
+}

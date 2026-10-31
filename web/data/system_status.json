@@ -1,0 +1,23 @@
+{
+  "current_system_state": "IMPLEMENTED \u2014 WAITING FOR LIVE INPUT",
+  "last_updated_utc": "2026-10-31T20:02:50.839568+00:00",
+  "timezone": "Asia/Kolkata",
+  "model_integrity": {
+    "is_intact": true,
+    "status": "PASS",
+    "model_sha256": "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df",
+    "n_estimators": 43,
+    "feature_count": 63
+  },
+  "ledger_integrity": {
+    "is_valid": true,
+    "prediction_count": 1,
+    "outcome_count": 1,
+    "tip_hash": "60083e149faf929e7c4681b707513e8a3b1002d920a0d17f51415226cd4f514f",
+    "chain_issues": []
+  },
+  "scheduler_status": "ENABLED",
+  "latest_error": null,
+  "research_status": "RESEARCH_BASELINE_ONLY",
+  "trading_authorized": false
+}
