@@ -69,21 +69,43 @@ function formatIST(isoUtcString) {
   }
 }
 
-async function loadAllDashboardData() {
-  const [latestPred, sysStatus, modelInfo, predHist, outHist, perfSummary] = await Promise.all([
-    fetchJSON('latest_prediction.json'),
-    fetchJSON('system_status.json'),
-    fetchJSON('model_info.json'),
-    fetchJSON('prediction_history.json'),
-    fetchJSON('outcome_history.json'),
-    fetchJSON('performance_summary.json')
-  ]);
+function displayDataLoadError(msg) {
+  const errBanner = document.getElementById('error-banner');
+  if (errBanner) {
+    errBanner.textContent = `CRITICAL DATA ERROR: ${msg}`;
+    errBanner.style.display = 'block';
+  }
+  const badge = document.getElementById('overview-badge');
+  if (badge) {
+    badge.textContent = 'DATA LOAD ERROR';
+    badge.className = 'status-badge badge-blocked';
+  }
+}
 
-  renderLatestPrediction(latestPred);
-  renderSystemStatus(sysStatus);
-  renderModelInfo(modelInfo);
-  renderHistory(predHist, outHist);
-  renderAnalytics(perfSummary);
+async function loadAllDashboardData() {
+  try {
+    const [latestPred, sysStatus, modelInfo, predHist, outHist, perfSummary] = await Promise.all([
+      fetchJSON('latest_prediction.json'),
+      fetchJSON('system_status.json'),
+      fetchJSON('model_info.json'),
+      fetchJSON('prediction_history.json'),
+      fetchJSON('outcome_history.json'),
+      fetchJSON('performance_summary.json')
+    ]);
+
+    if (!latestPred || !sysStatus) {
+      displayDataLoadError("Failed to retrieve required prospective JSON contracts. Verify network connection and static web/data assets.");
+      return;
+    }
+
+    renderLatestPrediction(latestPred);
+    renderSystemStatus(sysStatus);
+    renderModelInfo(modelInfo);
+    renderHistory(predHist, outHist);
+    renderAnalytics(perfSummary);
+  } catch (err) {
+    displayDataLoadError(`Unexpected client exception while loading dashboard data: ${err.message}`);
+  }
 }
 
 function renderLatestPrediction(data) {

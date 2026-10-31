@@ -1,21 +1,4 @@
 {
-  "total_count": 1,
-  "outcomes": [
-    {
-      "absolute_error_bps": 55.30793301295578,
-      "acquisition_timestamp": "2026-10-31T20:02:50.823192+00:00",
-      "data_source": "NSE_OFFICIAL_CASH",
-      "directional_match": true,
-      "outcome_id": "out_2026-11-02_T0",
-      "prediction_error": -0.005530793301295578,
-      "prediction_id": "pred_2026-11-02_0850",
-      "realized_close": 24150.0,
-      "realized_open": 24000.0,
-      "realized_t0": 0.006250000000000089,
-      "realized_t0_bps": 62.50000000000089,
-      "record_hash": "b5571cb788d74b2e7bea98a53de64bb2d3c4934dd1af9c33ac7ee313a3f50900",
-      "session_date": "2026-11-02",
-      "status": "RECONCILED"
-    }
-  ]
+  "total_count": 0,
+  "outcomes": []
 }

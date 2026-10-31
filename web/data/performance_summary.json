@@ -1,8 +1,8 @@
 {
   "prospective_metrics": {
     "sample_size": 0,
-    "status": "ZERO_QUALIFIED_PROSPECTIVE_SESSIONS",
-    "message": "Outcomes exist but none qualify as genuine prospective live captures."
+    "status": "NO_RECONCILED_OUTCOMES",
+    "message": "No prospective outcomes have accumulated yet."
   },
   "checkpoints": {
     "checkpoint_1_n60": {
@@ -18,5 +18,5 @@
       "scope": "Annual formal econometric evaluation"
     }
   },
-  "last_evaluated_utc": "2026-10-31T20:02:50.853442+00:00"
+  "last_evaluated_utc": "2026-10-31T20:52:17.478112+00:00"
 }

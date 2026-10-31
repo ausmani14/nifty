@@ -30,18 +30,19 @@ on:
         default: ''
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: nifty-ai-daily-shadow-ops
   cancel-in-progress: false
 
 jobs:
-  execute-operation:
+  daily-operations:
+    name: Daily Shadow Operations
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -60,24 +61,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Determine Operation
+      - name: Validate and Classify Workflow Inputs
         id: op_select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+          INPUT_OPERATION: ${{ github.event.inputs.operation }}
+          INPUT_SESSION_DATE: ${{ github.event.inputs.session_date }}
+          INPUT_FILE: ${{ github.event.inputs.input_file }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "OP=${{ github.event.inputs.operation }}" >> $GITHUB_OUTPUT
-            echo "DATE_ARG=${{ github.event.inputs.session_date }}" >> $GITHUB_OUTPUT
-            echo "FILE_ARG=${{ github.event.inputs.input_file }}" >> $GITHUB_OUTPUT
-          else
-            # Scheduled triggers: Check UTC hour to distinguish morning vs afternoon
-            UTC_HOUR=$(date -u +%H)
-            if [ "$UTC_HOUR" -lt 8 ]; then
-              echo "OP=snapshot_b" >> $GITHUB_OUTPUT
-            else
-              echo "OP=reconcile_outcomes" >> $GITHUB_OUTPUT
-            fi
-            echo "DATE_ARG=" >> $GITHUB_OUTPUT
-            echo "FILE_ARG=" >> $GITHUB_OUTPUT
-          fi
+          python scripts/validate_workflow_inputs.py
 
       - name: Run Daily Operations CLI
         env:
@@ -85,6 +78,7 @@ jobs:
           DATE_ARG: ${{ steps.op_select.outputs.DATE_ARG }}
           FILE_ARG: ${{ steps.op_select.outputs.FILE_ARG }}
         run: |
+          set -euo pipefail
           ARGS=("--operation" "$OP")
           if [ -n "$DATE_ARG" ]; then
             ARGS+=("--session-date" "$DATE_ARG")
@@ -95,55 +89,23 @@ jobs:
           echo "Executing: python scripts/run_daily_ops.py ${ARGS[*]}"
           python scripts/run_daily_ops.py "${ARGS[@]}"
 
-      - name: Verify Ledger and Export Files
+      - name: Verify Ledger and Export Website Data
         run: |
+          set -euo pipefail
           python scripts/verify_shadow_ledger.py
           python scripts/export_website_data.py
 
+      - name: Verify Web Directory Integrity
+        run: |
+          set -euo pipefail
+          python scripts/verify_web_artifacts.py
+
       - name: Commit and Push Changes
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # Stage only validated ledger files and website JSON data (both root and web/)
-          git add index.html \
-                  data/interim/phase14_shadow/shadow_predictions_ledger.jsonl \
-                  data/interim/phase14_shadow/shadow_outcomes_ledger.jsonl \
-                  website_data/ \
-                  web/data/ || true
-
-          if git diff --staged --quiet; then
-            echo "No ledger or website data changes to commit."
-          else
-            git commit -m "Auto: Update shadow ledgers and website data [skip ci]"
-            # Pull rebase in case of concurrent updates, retry bounded up to 3 times
-            for i in 1 2 3; do
-              git pull --rebase origin main || git pull --rebase origin master || true
-              if git push; then
-                echo "Successfully pushed updates to repository."
-                break
-              fi
-              sleep 5
-            done
-          fi
-
-      - name: Setup GitHub Pages
-        if: success()
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
-        continue-on-error: true
-
-      - name: Upload GitHub Pages Artifact
-        if: success()
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        with:
-          path: 'web'
-        continue-on-error: true
-
-      - name: Deploy to GitHub Pages
-        if: success()
-        id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
-        continue-on-error: true
+          python scripts/git_commit_and_push.py
 
       - name: Generate Workflow Summary
         if: always()
@@ -154,5 +116,52 @@ jobs:
           echo "- **Timestamp (UTC)**: \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: \`${{ job.status }}\`" >> $GITHUB_STEP_SUMMARY
           if [ -f "website_data/latest_prediction.json" ]; then
-            echo "- **Prediction Status**: \`$(jq -r .prediction_status website_data/latest_prediction.json)\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Prediction Status**: \`$(jq -r .prediction_status website_data/latest_prediction.json 2>/dev/null || echo 'UNKNOWN')\`" >> $GITHUB_STEP_SUMMARY
           fi
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: daily-operations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@39cd14951b08e74b54015eac00f074f16fc18230 # v5.1.1
+        with:
+          python-version: '3.13'
+
+      - name: Verify Web Artifacts Before Deployment
+        run: |
+          set -euo pipefail
+          python scripts/verify_web_artifacts.py
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: 'web'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+      - name: Report Deployment URL
+        run: |
+          echo "### GitHub Pages Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Page URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed Artifact Path**: \`web/\`" >> $GITHUB_STEP_SUMMARY
