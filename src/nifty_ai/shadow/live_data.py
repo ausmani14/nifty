@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from zoneinfo import ZoneInfo
 
 from nifty_ai.shadow.contracts import (
+    ACTIVATION_BOUNDARY_UTC,
     CANONICAL_FEATURES_63,
     FeatureVector,
     ProvenanceType,
@@ -107,8 +108,8 @@ def attempt_live_feature_capture(
         tzinfo=MARKET_TIMEZONE,
     )
 
-    # Disallow backdating: predictions cannot be generated prospectively for past sessions
-    if session_date < today_ist_str and not input_file_path:
+    # Disallow backdating: prospective predictions can NEVER be generated for past sessions
+    if session_date < today_ist_str:
         return DataCaptureResult(
             status=CaptureStatus.MISSED_CUTOFF,
             session_date=session_date,
@@ -117,8 +118,18 @@ def attempt_live_feature_capture(
             metadata={"session_date": session_date, "today_ist": today_ist_str, "cutoff_time": cutoff_time.isoformat()},
         )
 
+    # Disallow future dating: prospective predictions cannot be generated in advance of the session
+    if session_date > today_ist_str:
+        return DataCaptureResult(
+            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+            session_date=session_date,
+            feature_vector=None,
+            reason=f"Cannot generate prospective prediction for future session date {session_date} in advance.",
+            metadata={"session_date": session_date, "today_ist": today_ist_str, "cutoff_time": cutoff_time.isoformat()},
+        )
+
     # If the capture is attempted for today after 08:50 IST, it has missed the cutoff
-    if session_date == today_ist_str and now_ist.time() > SNAPSHOT_B_CUTOFF_TIME and not input_file_path:
+    if session_date == today_ist_str and now_ist.time() > SNAPSHOT_B_CUTOFF_TIME:
         return DataCaptureResult(
             status=CaptureStatus.MISSED_CUTOFF,
             session_date=session_date,
@@ -128,10 +139,65 @@ def attempt_live_feature_capture(
         )
 
     # 3. Input File Path provided (Manual / Point-in-Time file)
-    if input_file_path and input_file_path.exists():
+    if input_file_path:
+        if not input_file_path.exists():
+            return DataCaptureResult(
+                status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                session_date=session_date,
+                feature_vector=None,
+                reason=f"Supplied input file does not exist: {input_file_path}",
+                metadata={"input_file": str(input_file_path)},
+            )
         try:
             from nifty_ai.shadow.input_capture import load_feature_vector_from_json
             vec = load_feature_vector_from_json(input_file_path)
+
+            # Invariant 1: Session date match
+            if vec.session_date != session_date:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Input file session_date '{vec.session_date}' does not match target session '{session_date}'.",
+                    metadata={"file_session_date": vec.session_date, "target_session": session_date},
+                )
+
+            # Invariant 2: Provenance must be strictly PROSPECTIVE_LIVE_CAPTURE
+            if vec.provenance is None or vec.provenance.provenance_type != ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+                prov_str = str(vec.provenance.provenance_type) if vec.provenance else "None"
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Prospective pipeline strictly rejects non-prospective provenance '{prov_str}'. "
+                           f"Only '{ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value}' is authorized.",
+                    metadata={"provenance_type": prov_str},
+                )
+
+            # Invariant 3: Activation boundary check
+            cutoff_utc = vec.cutoff_time.astimezone(timezone.utc)
+            obs_utc = vec.provenance.observation_time.astimezone(timezone.utc)
+            if cutoff_utc < ACTIVATION_BOUNDARY_UTC or obs_utc < ACTIVATION_BOUNDARY_UTC:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Input file timestamps predate system activation boundary {ACTIVATION_BOUNDARY_UTC.isoformat()}.",
+                    metadata={"cutoff_utc": cutoff_utc.isoformat(), "activation_boundary": ACTIVATION_BOUNDARY_UTC.isoformat()},
+                )
+
+            # Invariant 4: Evaluation time availability check
+            avail_utc = vec.provenance.availability_time.astimezone(timezone.utc)
+            now_utc = now_ist.astimezone(timezone.utc)
+            if avail_utc > now_utc:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Input availability time {avail_utc.isoformat()} is in the future relative to evaluation time {now_utc.isoformat()}.",
+                    metadata={"avail_utc": avail_utc.isoformat(), "now_utc": now_utc.isoformat()},
+                )
+
             return DataCaptureResult(
                 status=CaptureStatus.SUCCESS,
                 session_date=session_date,
@@ -141,7 +207,7 @@ def attempt_live_feature_capture(
             )
         except Exception as e:
             return DataCaptureResult(
-                status=CaptureStatus.DATA_SOURCE_BLOCKED,
+                status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
                 session_date=session_date,
                 feature_vector=None,
                 reason=f"Failed to parse input file: {e}",

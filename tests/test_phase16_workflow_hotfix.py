@@ -14,18 +14,23 @@ from nifty_ai.shadow.contracts import (
     CANONICAL_FEATURES_63,
     CANONICAL_META_SHA256,
     CANONICAL_MODEL_SHA256,
+    LedgerStatus,
     ProvenanceType,
+    ValidationStatus,
 )
+from nifty_ai.shadow.inference import ShadowInferenceRunner
 from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
 from nifty_ai.shadow.input_validator import (
     SNAPSHOT_B_CUTOFF_TIME,
     SnapshotBInputValidator,
 )
+from nifty_ai.shadow.ledger import ShadowPredictionLedger
 from nifty_ai.shadow.live_data import (
     CaptureStatus,
     attempt_live_feature_capture,
 )
 from nifty_ai.shadow.model_protection import assert_frozen_model_intact
+from nifty_ai.shadow.reconciliation import ShadowOutcomeReconciler
 from nifty_ai.shadow.website_exporter import WebsiteDataExporter
 from scripts.git_commit_and_push import AUTHORIZED_STAGE_PATHS, perform_safe_commit_and_push
 from scripts.validate_workflow_inputs import (
@@ -369,3 +374,242 @@ def test_frozen_model_and_metadata_invariants():
     assert rep.meta_sha256 == CANONICAL_META_SHA256
     assert rep.n_estimators == 43
     assert rep.feature_count == 63
+
+
+# ---------------------------------------------------------------------------
+# Final Hotfix Governance & Regression Tests (Issues 1-5)
+# ---------------------------------------------------------------------------
+
+def test_evaluation_time_future_availability_rejected():
+    """ISSUE 3: Availability in future relative to evaluation time is rejected even if before cutoff."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    # Observation at 08:30, available at 08:45, cutoff at 08:50
+    # Available at 08:45 is in the future relative to evaluation at 08:35!
+    vec = build_synthetic_feature_vector(
+        session_date="2026-11-02",
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    report = validator.validate(vec, current_time=eval_time)
+    assert report.status == ValidationStatus.FAILED
+    assert "AVAILABILITY_PRIOR_TO_EVALUATION" in report.failed_checks
+    assert any("in the future relative to evaluation time" in err for err in report.error_messages)
+
+
+def test_regression_historical_date_plus_input_file_rejected(tmp_path: Path):
+    """ISSUE 2 Regr 1: Past session date with input file is strictly rejected."""
+    in_file = tmp_path / "past_vector.json"
+    vec = build_synthetic_feature_vector(
+        session_date="2024-01-05",
+        observation_time=datetime(2024, 1, 5, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2024, 1, 5, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2024, 1, 5, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    # Current time is in 2026
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date="2024-01-05",
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.MISSED_CUTOFF
+    assert "Backdating is strictly prohibited" in res.reason
+
+
+def test_regression_historical_backfill_provenance_rejected(tmp_path: Path):
+    """ISSUE 2 Regr 2: Input file with historical_backfill provenance is strictly rejected."""
+    today_str = "2026-11-02"
+    in_file = tmp_path / "backfill_vector.json"
+    vec = build_synthetic_feature_vector(
+        session_date=today_str,
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.HISTORICAL_BACKFILL,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date=today_str,
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.INVALID_POINT_IN_TIME_INPUT
+    assert "strictly rejects non-prospective provenance" in res.reason
+
+
+def test_regression_retrospective_reference_provenance_rejected(tmp_path: Path):
+    """ISSUE 2 Regr 3: Input file with retrospective_reference provenance is rejected."""
+    today_str = "2026-11-02"
+    in_file = tmp_path / "retro_vector.json"
+    vec = build_synthetic_feature_vector(
+        session_date=today_str,
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.RETROSPECTIVE_REFERENCE,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date=today_str,
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.INVALID_POINT_IN_TIME_INPUT
+    assert "strictly rejects non-prospective provenance" in res.reason
+
+
+def test_regression_invalid_or_quarantined_provenance_rejected(tmp_path: Path):
+    """ISSUE 2 Regr 4: Input file with invalid_or_quarantined provenance is rejected."""
+    today_str = "2026-11-02"
+    in_file = tmp_path / "quarantined_vector.json"
+    vec = build_synthetic_feature_vector(
+        session_date=today_str,
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.INVALID_OR_QUARANTINED,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date=today_str,
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.INVALID_POINT_IN_TIME_INPUT
+    assert "strictly rejects non-prospective provenance" in res.reason
+
+
+def test_regression_past_session_file_attempting_bypass_rejected(tmp_path: Path):
+    """ISSUE 2 Regr 5: Past session date attempting bypass is caught by live_data."""
+    in_file = tmp_path / "bypass_attempt.json"
+    vec = build_synthetic_feature_vector(
+        session_date="2026-10-30",
+        observation_time=datetime(2026, 10, 30, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 10, 30, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 10, 30, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    # Runner at 2026-11-02
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date="2026-10-30",
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.MISSED_CUTOFF
+    assert "Backdating is strictly prohibited" in res.reason
+
+
+def test_regression_valid_current_session_prospective_input(tmp_path: Path):
+    """ISSUE 2 Regr 6: Valid current-session prospective input file is accepted and recorded in temp ledger."""
+    today_str = "2026-11-02"
+    in_file = tmp_path / "valid_vector.json"
+    vec = build_synthetic_feature_vector(
+        session_date=today_str,
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
+
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture(
+        session_date=today_str,
+        input_file_path=in_file,
+        current_time=current_time,
+    )
+    assert res.status == CaptureStatus.SUCCESS
+    assert res.feature_vector is not None
+
+    # Validate and append to isolated temp ledger
+    validator = SnapshotBInputValidator()
+    report = validator.validate(res.feature_vector, current_time=current_time)
+    assert report.is_eligible_for_inference is True
+
+    temp_ledger = ShadowPredictionLedger(ledger_path=tmp_path / "temp_regr_ledger.jsonl")
+    runner = ShadowInferenceRunner()
+    pred = runner.predict(res.feature_vector, report, prev_record_hash=temp_ledger.get_tip_hash())
+    status, rec = temp_ledger.append_prediction(pred)
+    assert status == LedgerStatus.RECORDED
+    assert len(temp_ledger.get_all_records()) == 1
+
+
+def test_regression_duplicate_prospective_prediction(tmp_path: Path):
+    """ISSUE 2 Regr 7: Duplicate prospective prediction returns DUPLICATE_IGNORED."""
+    temp_ledger = ShadowPredictionLedger(ledger_path=tmp_path / "temp_dup_ledger.jsonl")
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+
+    today_str = "2026-11-02"
+    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        session_date=today_str,
+        observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    report = validator.validate(vec, current_time=current_time)
+    pred = runner.predict(vec, report, prev_record_hash=temp_ledger.get_tip_hash())
+
+    status1, _ = temp_ledger.append_prediction(pred)
+    assert status1 == LedgerStatus.RECORDED
+
+    # Duplicate call
+    status2, existing = temp_ledger.append_prediction(pred)
+    assert status2 == LedgerStatus.DUPLICATE_IGNORED
+    assert existing["prediction_id"] == pred.prediction_id
+    assert len(temp_ledger.get_all_records()) == 1
+
+
+def test_artifact_handoff_architecture_in_workflow():
+    """ISSUE 1: Verify daily-operations uploads web/ artifact and deploy-pages deploys without checkout."""
+    wf_path = PROJECT_ROOT / ".github" / "workflows" / "daily_shadow_ops.yml"
+    content = wf_path.read_text(encoding="utf-8")
+
+    # In daily-operations:
+    assert "upload-pages-artifact" in content
+    # In deploy-pages:
+    assert "deploy-pages:" in content
+    assert "needs: daily-operations" in content
+    assert "deploy-pages@" in content
+    # deploy-pages does NOT do a git checkout:
+    deploy_pages_section = content.split("deploy-pages:")[1]
+    assert "actions/checkout" not in deploy_pages_section
+
+
+def test_health_check_and_dry_run_never_modify_production_ledgers():
+    """ISSUE 5: Verify health_check and dry_run never touch the production ledgers."""
+    real_pred_ledger = ShadowPredictionLedger()
+    real_out_reconciler = ShadowOutcomeReconciler(prediction_ledger=real_pred_ledger)
+
+    # Initial state must be 0
+    assert len(real_pred_ledger.get_all_records()) == 0
+    assert len(real_out_reconciler.get_all_outcomes()) == 0
+
+    from scripts.run_daily_ops import run_dry_run, run_health_check
+    hc_ret = run_health_check()
+    assert hc_ret == 0
+
+    dr_ret = run_dry_run()
+    assert dr_ret == 0
+
+    # Production ledgers must STILL be at exactly zero
+    assert len(real_pred_ledger.get_all_records()) == 0
+    assert len(real_out_reconciler.get_all_outcomes()) == 0
+    assert real_pred_ledger.get_tip_hash() == "0" * 64

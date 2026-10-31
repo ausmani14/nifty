@@ -12,7 +12,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from nifty_ai.config import PROJECT_ROOT
 from nifty_ai.shadow.contracts import (
+    ACTIVATION_BOUNDARY_UTC,
     LedgerStatus,
+    ProvenanceType,
     ShadowPrediction,
 )
 
@@ -58,8 +60,38 @@ class ShadowPredictionLedger:
     def append_prediction(
         self,
         prediction: ShadowPrediction,
+        enforce_prospective: Optional[bool] = None,
     ) -> Tuple[LedgerStatus, Optional[Dict[str, Any]]]:
         """Atomically append a prediction to the ledger if not already present."""
+        # Enforce prospective live capture constraints on production ledger or when requested
+        if enforce_prospective is None:
+            try:
+                enforce_prospective = (self.ledger_path.resolve() == DEFAULT_LEDGER_PATH.resolve())
+            except Exception:
+                enforce_prospective = True
+
+        if enforce_prospective:
+            if prediction.provenance_type != ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value:
+                raise ValueError(
+                    f"Prospective prediction ledger strictly rejects non-prospective provenance '{prediction.provenance_type}'. "
+                    f"Only '{ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value}' is authorized."
+                )
+            pred_ts = prediction.prediction_timestamp
+            if pred_ts.tzinfo is None:
+                raise ValueError("Prediction timestamp must be timezone-aware.")
+            if pred_ts.astimezone(timezone.utc) < ACTIVATION_BOUNDARY_UTC:
+                raise ValueError(
+                    f"Prediction timestamp {pred_ts.isoformat()} predates activation boundary {ACTIVATION_BOUNDARY_UTC.isoformat()}."
+                )
+
+            cutoff_ts = prediction.cutoff_timestamp
+            if cutoff_ts.tzinfo is None:
+                raise ValueError("Cutoff timestamp must be timezone-aware.")
+            if cutoff_ts.astimezone(timezone.utc) < ACTIVATION_BOUNDARY_UTC:
+                raise ValueError(
+                    f"Cutoff timestamp {cutoff_ts.isoformat()} predates activation boundary {ACTIVATION_BOUNDARY_UTC.isoformat()}."
+                )
+
         # 1. Idempotency / Duplicate Check
         if self.has_session_prediction(prediction.session_date, prediction.snapshot_type):
             existing_rec = next(

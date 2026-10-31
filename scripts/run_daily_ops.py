@@ -36,8 +36,26 @@ ALLOWED_OPERATIONS = {"snapshot_b", "reconcile_outcomes", "health_check", "dry_r
 
 
 def run_snapshot_b(session_date: str, input_file: str = None) -> int:
+    today_ist_str = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).strftime("%Y-%m-%d")
+    if not session_date:
+        session_date = today_ist_str
+
     print(f"[Snapshot B] Executing morning prediction workflow for session {session_date}...")
     exporter = WebsiteDataExporter()
+
+    # Reject past sessions
+    if session_date < today_ist_str:
+        err = f"Cannot generate prospective prediction for past session date {session_date}. Backdating is strictly prohibited."
+        print(f"      [FATAL] Prospective Rejected: {err}", file=sys.stderr)
+        exporter.export_all(current_system_state="REJECTED_PAST_SESSION", latest_error=err)
+        return 1
+
+    # Reject future sessions
+    if session_date > today_ist_str:
+        err = f"Cannot generate prospective prediction for future session date {session_date} in advance."
+        print(f"      [FATAL] Prospective Rejected: {err}", file=sys.stderr)
+        exporter.export_all(current_system_state="REJECTED_FUTURE_SESSION", latest_error=err)
+        return 1
 
     # 1. Model Integrity Guard
     try:
@@ -64,9 +82,9 @@ def run_snapshot_b(session_date: str, input_file: str = None) -> int:
         return 1
 
     if capture.status != CaptureStatus.SUCCESS or capture.feature_vector is None:
-        print(f"      [BLOCK] {capture.reason}", file=sys.stderr)
+        print(f"      [CAPTURE STATUS: DATA_SOURCE_BLOCKED] {capture.reason}", file=sys.stderr)
         exporter.export_all(current_system_state="DATA_SOURCE_BLOCKED", latest_error=capture.reason)
-        return 0  # Clean non-zero exit for scheduled workflow so it logs without failing runner
+        return 0  # Clean zero exit so workflow exports blocked status to website without claiming prediction success
 
     # 3. Validate Point-in-Time Vector
     validator = SnapshotBInputValidator()

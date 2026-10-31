@@ -6,12 +6,15 @@ directory traversal, malformed dates, and unapproved operations.
 Safely maps scheduled crons to operations without relying on runner wall-clock time.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
 import sys
 from typing import Dict, Optional, Set, Tuple
+from zoneinfo import ZoneInfo
+
+MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 ALLOWED_OPERATIONS: Set[str] = {
     "snapshot_b",
@@ -89,6 +92,15 @@ def validate_and_classify_inputs(
                 datetime.strptime(raw_date, "%Y-%m-%d")
             except ValueError as e:
                 raise ValueError(f"Invalid calendar date '{raw_date}': {e}") from e
+
+            # Reject past/future dates for prospective snapshot_b operations
+            if op_str == "snapshot_b":
+                today_ist_str = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).strftime("%Y-%m-%d")
+                if raw_date < today_ist_str:
+                    raise ValueError(f"Snapshot B rejects past session date '{raw_date}'. Backdating prospective predictions is strictly prohibited.")
+                if raw_date > today_ist_str:
+                    raise ValueError(f"Snapshot B rejects future session date '{raw_date}'. Prospective predictions cannot be generated in advance.")
+
             date_arg = raw_date
 
         # Validate input_file if provided

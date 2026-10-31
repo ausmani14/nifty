@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from nifty_ai.shadow.contracts import (
+    ACTIVATION_BOUNDARY_UTC,
     CANONICAL_FEATURES_63,
     CANONICAL_PRICE_FEATURES_45,
     CANONICAL_CONTEXT_FEATURES_18,
@@ -22,7 +23,6 @@ from nifty_ai.shadow.contracts import (
 )
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
-ACTIVATION_BOUNDARY_UTC = datetime(2026, 10, 31, 14, 47, 0, tzinfo=timezone.utc)
 SNAPSHOT_B_CUTOFF_TIME = time(8, 50, 0)
 
 
@@ -47,7 +47,14 @@ class SnapshotBInputValidator:
         current_time: Optional[datetime] = None,
     ) -> ValidationReport:
         """Execute strict fail-closed validation of a Snapshot B feature vector."""
-        now_dt = (current_time or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        if current_time is not None:
+            now_dt = current_time.astimezone(timezone.utc)
+        else:
+            today_ist_str = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).strftime("%Y-%m-%d")
+            if feature_vector.session_date > today_ist_str:
+                now_dt = feature_vector.cutoff_time.astimezone(timezone.utc)
+            else:
+                now_dt = datetime.now(timezone.utc)
         report = ValidationReport(
             validation_id=f"val_{feature_vector.session_date}_{now_dt.strftime('%Y%m%d_%H%M%S')}",
             session_date=feature_vector.session_date,
@@ -165,7 +172,10 @@ class SnapshotBInputValidator:
             report.passed_checks.append("AVAILABILITY_PRIOR_TO_CUTOFF")
 
         obs_utc = feature_vector.provenance.observation_time.astimezone(timezone.utc)
+        avail_utc = feature_vector.provenance.availability_time.astimezone(timezone.utc)
         cutoff_utc = feature_vector.cutoff_time.astimezone(timezone.utc)
+
+        # Verification against 08:50 cutoff boundary
         if obs_utc > cutoff_utc:
             report.failed_checks.append("OBSERVATION_TIME_VALIDITY")
             report.error_messages.append(
@@ -173,6 +183,31 @@ class SnapshotBInputValidator:
             )
         else:
             report.passed_checks.append("OBSERVATION_TIME_VALIDITY")
+
+        # Verification against actual pipeline evaluation time (Issue 3)
+        if avail_utc > now_dt:
+            report.failed_checks.append("AVAILABILITY_PRIOR_TO_EVALUATION")
+            report.error_messages.append(
+                f"Input availability time {avail_utc.isoformat()} is in the future relative to evaluation time {now_dt.isoformat()}."
+            )
+        else:
+            report.passed_checks.append("AVAILABILITY_PRIOR_TO_EVALUATION")
+
+        if obs_utc > now_dt:
+            report.failed_checks.append("OBSERVATION_PRIOR_TO_EVALUATION")
+            report.error_messages.append(
+                f"Observation time {obs_utc.isoformat()} is in the future relative to evaluation time {now_dt.isoformat()}."
+            )
+        else:
+            report.passed_checks.append("OBSERVATION_PRIOR_TO_EVALUATION")
+
+        if obs_utc > avail_utc:
+            report.failed_checks.append("OBSERVATION_BEFORE_AVAILABILITY")
+            report.error_messages.append(
+                f"Observation timestamp {obs_utc.isoformat()} post-dates availability timestamp {avail_utc.isoformat()}."
+            )
+        else:
+            report.passed_checks.append("OBSERVATION_BEFORE_AVAILABILITY")
 
         # Stale Source Check (Max 7 calendar days before cutoff)
         staleness_delta = cutoff_utc - obs_utc

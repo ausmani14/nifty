@@ -44,6 +44,9 @@ CANONICAL_FEATURES_63: tuple[str, ...] = CANONICAL_PRICE_FEATURES_45 + CANONICAL
 CANONICAL_MODEL_SHA256: str = "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df"
 CANONICAL_META_SHA256: str = "d64fee485721cc4e2596e8fd10039d9ea2a7e41ce84b90e19b6bd994ea5d7f33"
 
+# Canonical activation boundary timestamp (Phase 14 Protocol Freeze)
+ACTIVATION_BOUNDARY_UTC: datetime = datetime(2026, 10, 31, 14, 47, 0, tzinfo=timezone.utc)
+
 
 class ProvenanceType(str, Enum):
     PROSPECTIVE_LIVE_CAPTURE = "prospective_live_capture"
