@@ -83,19 +83,28 @@ def test_live_capture_holiday_rejection():
     assert res.feature_vector is None
 
 
+def test_live_capture_premature_evaluation_rejection():
+    # Simulate today before 08:50:00 IST cutoff (e.g. 08:40:00 IST)
+    now_early = datetime(2026, 11, 2, 8, 40, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture("2026-11-02", current_time=now_early)
+    assert res.status == CaptureStatus.PREMATURE_EVALUATION
+    assert res.feature_vector is None
+    assert "before 08:50:00 IST" in (res.reason or "")
+
+
 def test_live_capture_missed_cutoff_rejection():
-    # Simulate today at 09:10 IST (after 08:50:00 IST cutoff)
-    now_late = datetime(2026, 11, 2, 9, 10, 0, tzinfo=MARKET_TIMEZONE)
+    # Simulate today at 09:20 IST (after 09:15:00 IST pre-market deadline)
+    now_late = datetime(2026, 11, 2, 9, 20, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture("2026-11-02", current_time=now_late)
     assert res.status == CaptureStatus.MISSED_CUTOFF
     assert res.feature_vector is None
-    assert "after 08:50:00 IST cutoff" in (res.reason or "")
+    assert "at or after 09:15:00 IST" in (res.reason or "")
 
 
 def test_live_capture_fail_closed_without_feed():
-    # When no feed is connected and no input file is supplied:
-    now_early = datetime(2026, 11, 2, 8, 40, 0, tzinfo=MARKET_TIMEZONE)
-    res = attempt_live_feature_capture("2026-11-02", current_time=now_early)
+    # When evaluated in valid window [08:50, 09:15) but no feed is connected:
+    now_valid_window = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture("2026-11-02", current_time=now_valid_window)
     assert res.status == CaptureStatus.DATA_SOURCE_BLOCKED
     assert res.feature_vector is None
     assert "Under zero-fabrication governance" in (res.reason or "")

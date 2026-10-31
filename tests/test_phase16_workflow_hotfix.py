@@ -185,17 +185,30 @@ def test_delayed_morning_cron_never_becomes_reconcile():
 # ---------------------------------------------------------------------------
 
 def test_missed_cutoff_fails_closed():
-    """Verify attempt_live_feature_capture returns MISSED_CUTOFF after 08:50 IST for today."""
+    """Verify attempt_live_feature_capture returns MISSED_CUTOFF at or after 09:15 IST for today."""
     session_date = "2026-11-02"  # Monday
-    # Simulate time at 09:05:00 IST (after 08:50 cutoff)
-    simulated_late_time = datetime(2026, 11, 2, 9, 5, 0, tzinfo=MARKET_TIMEZONE)
+    # Simulate time at 09:20:00 IST (past 09:15 market open deadline)
+    simulated_late_time = datetime(2026, 11, 2, 9, 20, 0, tzinfo=MARKET_TIMEZONE)
 
     res = attempt_live_feature_capture(
         session_date=session_date,
         current_time=simulated_late_time,
     )
     assert res.status == CaptureStatus.MISSED_CUTOFF
-    assert "after 08:50:00 IST cutoff" in res.reason
+    assert "at or after 09:15:00 IST" in res.reason
+
+
+def test_premature_evaluation_fails_closed():
+    """Verify attempt_live_feature_capture returns PREMATURE_EVALUATION before 08:50 IST for today."""
+    session_date = "2026-11-02"  # Monday
+    simulated_early_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+
+    res = attempt_live_feature_capture(
+        session_date=session_date,
+        current_time=simulated_early_time,
+    )
+    assert res.status == CaptureStatus.PREMATURE_EVALUATION
+    assert "before 08:50:00 IST" in res.reason
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +448,7 @@ def test_regression_historical_backfill_provenance_rejected(tmp_path: Path):
     )
     in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
 
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(
         session_date=today_str,
         input_file_path=in_file,
@@ -458,7 +471,7 @@ def test_regression_retrospective_reference_provenance_rejected(tmp_path: Path):
     )
     in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
 
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(
         session_date=today_str,
         input_file_path=in_file,
@@ -481,7 +494,7 @@ def test_regression_invalid_or_quarantined_provenance_rejected(tmp_path: Path):
     )
     in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
 
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(
         session_date=today_str,
         input_file_path=in_file,
@@ -504,7 +517,7 @@ def test_regression_past_session_file_attempting_bypass_rejected(tmp_path: Path)
     in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
 
     # Runner at 2026-11-02
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(
         session_date="2026-10-30",
         input_file_path=in_file,
@@ -527,7 +540,7 @@ def test_regression_valid_current_session_prospective_input(tmp_path: Path):
     )
     in_file.write_text(json.dumps(vec.to_dict()), encoding="utf-8")
 
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(
         session_date=today_str,
         input_file_path=in_file,
@@ -556,7 +569,7 @@ def test_regression_duplicate_prospective_prediction(tmp_path: Path):
     validator = SnapshotBInputValidator()
 
     today_str = "2026-11-02"
-    current_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     vec = build_synthetic_feature_vector(
         session_date=today_str,
         observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
@@ -613,3 +626,189 @@ def test_health_check_and_dry_run_never_modify_production_ledgers():
     assert len(real_pred_ledger.get_all_records()) == 0
     assert len(real_out_reconciler.get_all_outcomes()) == 0
     assert real_pred_ledger.get_tip_hash() == "0" * 64
+
+
+# ---------------------------------------------------------------------------
+# 14 Timing Boundary Conditions (Issue 5 Regression Test Suite)
+# ---------------------------------------------------------------------------
+
+def test_timing_boundary_condition_1_eval_at_0835_rejected():
+    """1. Evaluation at 08:35 IST -> rejected (EVALUATION_AFTER_CUTOFF / PREMATURE_EVALUATION)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "EVALUATION_AFTER_CUTOFF" in rep.failed_checks
+
+    res = attempt_live_feature_capture("2026-11-02", current_time=eval_time)
+    assert res.status == CaptureStatus.PREMATURE_EVALUATION
+
+
+def test_timing_boundary_condition_2_eval_at_084959_rejected():
+    """2. Evaluation at 08:49:59 IST -> rejected (EVALUATION_AFTER_CUTOFF / PREMATURE_EVALUATION)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 49, 59, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "EVALUATION_AFTER_CUTOFF" in rep.failed_checks
+
+    res = attempt_live_feature_capture("2026-11-02", current_time=eval_time)
+    assert res.status == CaptureStatus.PREMATURE_EVALUATION
+
+
+def test_timing_boundary_condition_3_eval_at_085000_accepted():
+    """3. Evaluation at 08:50:00 IST -> accepted."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is True
+    assert "EVALUATION_AFTER_CUTOFF" in rep.passed_checks
+
+
+def test_timing_boundary_condition_4_eval_at_085001_accepted():
+    """4. Evaluation at 08:50:01 IST -> accepted."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 50, 1, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is True
+    assert "EVALUATION_AFTER_CUTOFF" in rep.passed_checks
+
+
+def test_timing_boundary_condition_5_eval_at_091400_accepted():
+    """5. Evaluation at 09:14:00 IST -> accepted."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 9, 14, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is True
+    assert "PREMARKET_DEADLINE_ENFORCEMENT" in rep.passed_checks
+
+
+def test_timing_boundary_condition_6_eval_at_091500_rejected():
+    """6. Evaluation at 09:15:00 IST -> rejected (PREMARKET_DEADLINE_ENFORCEMENT)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 9, 15, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "PREMARKET_DEADLINE_ENFORCEMENT" in rep.failed_checks
+
+
+def test_timing_boundary_condition_7_correct_date_and_cutoff_accepted():
+    """7. Evaluation with correct date and 08:50 cutoff -> accepted."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is True
+    assert "CUTOFF_DATE_MISMATCH" in rep.passed_checks
+    assert "CUTOFF_TIME_ENFORCEMENT" in rep.passed_checks
+
+
+def test_timing_boundary_condition_8_previous_day_cutoff_rejected():
+    """8. Previous-day cutoff date with today's session date -> rejected (CUTOFF_DATE_MISMATCH)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        cutoff_time=datetime(2026, 11, 1, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "CUTOFF_DATE_MISMATCH" in rep.failed_checks
+
+
+def test_timing_boundary_condition_9_future_day_cutoff_rejected():
+    """9. Future-day cutoff date with today's session date -> rejected (CUTOFF_DATE_MISMATCH)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        cutoff_time=datetime(2026, 11, 3, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "CUTOFF_DATE_MISMATCH" in rep.failed_checks
+
+
+def test_timing_boundary_condition_10_observation_later_than_cutoff_rejected():
+    """10. Observation timestamp later than cutoff -> rejected (OBSERVATION_TIME_VALIDITY)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        observation_time=datetime(2026, 11, 2, 8, 51, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 51, 30, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "OBSERVATION_TIME_VALIDITY" in rep.failed_checks
+
+
+def test_timing_boundary_condition_11_availability_later_than_cutoff_rejected():
+    """11. Availability timestamp later than cutoff -> rejected (AVAILABILITY_PRIOR_TO_CUTOFF)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 51, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "AVAILABILITY_PRIOR_TO_CUTOFF" in rep.failed_checks
+
+
+def test_timing_boundary_condition_12_availability_later_than_eval_rejected():
+    """12. Availability timestamp later than evaluation time -> rejected (AVAILABILITY_PRIOR_TO_EVALUATION)."""
+    validator = SnapshotBInputValidator()
+    # Evaluated at 08:50:10, but availability claimed at 08:50:30 (even though <= 08:50 cutoff)
+    eval_time = datetime(2026, 11, 2, 8, 50, 10, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 50, 30, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "AVAILABILITY_PRIOR_TO_EVALUATION" in rep.failed_checks
+
+
+def test_timing_boundary_condition_13_missing_timezone_rejected():
+    """13. Missing timezone on any timestamp -> rejected (TIMEZONE_AWARENESS)."""
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    # Naive cutoff_time without tzinfo
+    naive_cutoff = datetime(2026, 11, 2, 8, 50, 0)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        cutoff_time=naive_cutoff,
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+    assert "TIMEZONE_AWARENESS" in rep.failed_checks
+
+
+def test_timing_boundary_condition_14_delayed_execution_past_0915_missed_cutoff():
+    """14. Delayed workflow execution past 09:15 IST -> MISSED_CUTOFF."""
+    eval_time = datetime(2026, 11, 2, 9, 25, 0, tzinfo=MARKET_TIMEZONE)
+    res = attempt_live_feature_capture("2026-11-02", current_time=eval_time)
+    assert res.status == CaptureStatus.MISSED_CUTOFF
+    assert "at or after 09:15:00 IST" in res.reason

@@ -21,6 +21,7 @@ from nifty_ai.shadow.contracts import (
     SourceProvenance,
 )
 from nifty_ai.shadow.input_validator import (
+    PREMARKET_DEADLINE_TIME,
     SNAPSHOT_B_CUTOFF_TIME,
     compute_feature_vector_hash,
 )
@@ -55,6 +56,7 @@ class CaptureStatus(str, Enum):
     HOLIDAY = "HOLIDAY"
     WEEKEND = "WEEKEND"
     MISSED_CUTOFF = "MISSED_CUTOFF"
+    PREMATURE_EVALUATION = "PREMATURE_EVALUATION"
     INPUT_FILE_LOADED = "INPUT_FILE_LOADED"
 
 
@@ -128,17 +130,26 @@ def attempt_live_feature_capture(
             metadata={"session_date": session_date, "today_ist": today_ist_str, "cutoff_time": cutoff_time.isoformat()},
         )
 
-    # If the capture is attempted for today after 08:50 IST, it has missed the cutoff
-    if session_date == today_ist_str and now_ist.time() > SNAPSHOT_B_CUTOFF_TIME:
-        return DataCaptureResult(
-            status=CaptureStatus.MISSED_CUTOFF,
-            session_date=session_date,
-            feature_vector=None,
-            reason=f"Current time {now_ist.strftime('%H:%M:%S IST')} is after 08:50:00 IST cutoff.",
-            metadata={"current_time": now_ist.isoformat(), "cutoff_time": cutoff_time.isoformat()},
-        )
+    # Timing validation for current trading day (Snapshot B window: [08:50:00, 09:15:00) IST)
+    if session_date == today_ist_str:
+        if now_ist.time() < SNAPSHOT_B_CUTOFF_TIME:
+            return DataCaptureResult(
+                status=CaptureStatus.PREMATURE_EVALUATION,
+                session_date=session_date,
+                feature_vector=None,
+                reason=f"Current time {now_ist.strftime('%H:%M:%S IST')} is before 08:50:00 IST Snapshot B cutoff. Premature prediction generation is strictly prohibited.",
+                metadata={"current_time": now_ist.isoformat(), "cutoff_time": cutoff_time.isoformat()},
+            )
+        if now_ist.time() >= PREMARKET_DEADLINE_TIME:
+            return DataCaptureResult(
+                status=CaptureStatus.MISSED_CUTOFF,
+                session_date=session_date,
+                feature_vector=None,
+                reason=f"Current time {now_ist.strftime('%H:%M:%S IST')} is at or after 09:15:00 IST market open. Pre-market prediction deadline has passed.",
+                metadata={"current_time": now_ist.isoformat(), "deadline": PREMARKET_DEADLINE_TIME.isoformat()},
+            )
 
-    # 3. Input File Path provided (Manual / Point-in-Time file)
+    # 3. Input File Path provided (Manual / Verified Point-in-Time file)
     if input_file_path:
         if not input_file_path.exists():
             return DataCaptureResult(
@@ -162,19 +173,51 @@ def attempt_live_feature_capture(
                     metadata={"file_session_date": vec.session_date, "target_session": session_date},
                 )
 
-            # Invariant 2: Provenance must be strictly PROSPECTIVE_LIVE_CAPTURE
-            if vec.provenance is None or vec.provenance.provenance_type != ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+            # Invariant 2: Cutoff timestamp date and exact 08:50:00 IST time (Issue 3)
+            if vec.cutoff_time is None or vec.cutoff_time.tzinfo is None:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason="Input file cutoff_time lacks timezone awareness.",
+                    metadata={"source_file": str(input_file_path)},
+                )
+            file_cutoff_ist = vec.cutoff_time.astimezone(MARKET_TIMEZONE)
+            target_dt = datetime.strptime(session_date, "%Y-%m-%d").date()
+            if file_cutoff_ist.date() != target_dt:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Cutoff calendar date '{file_cutoff_ist.date()}' does not match target session date '{session_date}'.",
+                    metadata={"file_cutoff_date": str(file_cutoff_ist.date()), "target_session": session_date},
+                )
+            if file_cutoff_ist.time() != SNAPSHOT_B_CUTOFF_TIME:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Cutoff time '{file_cutoff_ist.time()}' does not match mandatory 08:50:00 IST boundary.",
+                    metadata={"file_cutoff_time": str(file_cutoff_ist.time())},
+                )
+
+            # Invariant 3: Provenance must be strictly PROSPECTIVE_LIVE_CAPTURE or OPERATOR_ATTESTED_PROSPECTIVE
+            valid_provs = {
+                ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+                ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+            }
+            if vec.provenance is None or vec.provenance.provenance_type not in valid_provs:
                 prov_str = str(vec.provenance.provenance_type) if vec.provenance else "None"
                 return DataCaptureResult(
                     status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
                     session_date=session_date,
                     feature_vector=None,
                     reason=f"Prospective pipeline strictly rejects non-prospective provenance '{prov_str}'. "
-                           f"Only '{ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value}' is authorized.",
+                           f"Only prospective capture types {sorted([p.value for p in valid_provs])} are authorized.",
                     metadata={"provenance_type": prov_str},
                 )
 
-            # Invariant 3: Activation boundary check
+            # Invariant 4: Activation boundary check
             cutoff_utc = vec.cutoff_time.astimezone(timezone.utc)
             obs_utc = vec.provenance.observation_time.astimezone(timezone.utc)
             if cutoff_utc < ACTIVATION_BOUNDARY_UTC or obs_utc < ACTIVATION_BOUNDARY_UTC:
@@ -186,8 +229,26 @@ def attempt_live_feature_capture(
                     metadata={"cutoff_utc": cutoff_utc.isoformat(), "activation_boundary": ACTIVATION_BOUNDARY_UTC.isoformat()},
                 )
 
-            # Invariant 4: Evaluation time availability check
+            # Invariant 5: Observation and availability timestamps must not exceed cutoff
             avail_utc = vec.provenance.availability_time.astimezone(timezone.utc)
+            if obs_utc > cutoff_utc:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Observation time {obs_utc.isoformat()} exceeds cutoff {cutoff_utc.isoformat()}.",
+                    metadata={"obs_utc": obs_utc.isoformat(), "cutoff_utc": cutoff_utc.isoformat()},
+                )
+            if avail_utc > cutoff_utc:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Availability time {avail_utc.isoformat()} exceeds cutoff {cutoff_utc.isoformat()}.",
+                    metadata={"avail_utc": avail_utc.isoformat(), "cutoff_utc": cutoff_utc.isoformat()},
+                )
+
+            # Invariant 6: Availability must not be in the future relative to evaluation time
             now_utc = now_ist.astimezone(timezone.utc)
             if avail_utc > now_utc:
                 return DataCaptureResult(
@@ -198,12 +259,13 @@ def attempt_live_feature_capture(
                     metadata={"avail_utc": avail_utc.isoformat(), "now_utc": now_utc.isoformat()},
                 )
 
+            attestation_tier = "OPERATOR_ATTESTED" if vec.provenance.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE else "LIVE_CAPTURE"
             return DataCaptureResult(
                 status=CaptureStatus.SUCCESS,
                 session_date=session_date,
                 feature_vector=vec,
                 reason="Loaded verified point-in-time input vector from file.",
-                metadata={"source_file": str(input_file_path)},
+                metadata={"source_file": str(input_file_path), "attestation_tier": attestation_tier},
             )
         except Exception as e:
             return DataCaptureResult(

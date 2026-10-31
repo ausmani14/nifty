@@ -388,9 +388,9 @@ def test_group_e_backdating_strictly_prevented():
 
 def test_group_e_unconnected_live_feed_fails_closed():
     """When no verified live feed is connected, system returns DATA_SOURCE_BLOCKED."""
-    # Future eligible trading day without input file
+    # Eligible trading day evaluated within [08:50, 09:15) window without input file
     future_monday = "2026-11-02"
-    now_ist = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
+    now_ist = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     res = attempt_live_feature_capture(session_date=future_monday, current_time=now_ist)
     assert res.status == CaptureStatus.DATA_SOURCE_BLOCKED
     assert "Under zero-fabrication governance" in (res.reason or "")

@@ -66,9 +66,6 @@ def test_end_to_end_reconciliation_and_metrics(isolated_shadow_system):
         # 1. Pre-market input capture at 08:45 IST
         vec = build_synthetic_feature_vector(
             session_date=s_date,
-            observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
-            availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
-            cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )
         report = validator.validate(vec)
@@ -80,11 +77,12 @@ def test_end_to_end_reconciliation_and_metrics(isolated_shadow_system):
         assert status == LedgerStatus.RECORDED
 
         # 3. Post-market outcome reconciliation at 16:00 IST
+        acq_date = datetime.strptime(s_date, "%Y-%m-%d").date()
         outcome = reconciler.reconcile_session(
             session_date=s_date,
             open_price=mock_opens[idx],
             close_price=mock_closes[idx],
-            acquisition_time=datetime(2026, 11, 2, 16, 0, 0, tzinfo=MARKET_TIMEZONE),
+            acquisition_time=datetime.combine(acq_date, time(16, 0, 0), tzinfo=MARKET_TIMEZONE),
         )
 
         expected_t0 = (mock_closes[idx] / mock_opens[idx]) - 1.0

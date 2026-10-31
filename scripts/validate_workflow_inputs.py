@@ -24,7 +24,8 @@ ALLOWED_OPERATIONS: Set[str] = {
 }
 
 SCHEDULE_CRON_MAP: Dict[str, str] = {
-    "5 3 * * 1-5": "snapshot_b",
+    "22 3 * * 1-5": "snapshot_b",
+    "5 3 * * 1-5": "snapshot_b",  # backward compatibility alias
     "10 10 * * 1-5": "reconcile_outcomes",
 }
 

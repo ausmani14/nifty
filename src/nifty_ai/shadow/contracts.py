@@ -50,6 +50,7 @@ ACTIVATION_BOUNDARY_UTC: datetime = datetime(2026, 10, 31, 14, 47, 0, tzinfo=tim
 
 class ProvenanceType(str, Enum):
     PROSPECTIVE_LIVE_CAPTURE = "prospective_live_capture"
+    OPERATOR_ATTESTED_PROSPECTIVE = "operator_attested_prospective"
     HISTORICAL_BACKFILL = "historical_backfill"
     RETROSPECTIVE_REFERENCE = "retrospective_reference"
     INVALID_OR_QUARANTINED = "invalid_or_quarantined"

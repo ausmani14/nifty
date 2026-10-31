@@ -83,9 +83,6 @@ def test_chain_verification_detects_tampering(temp_ledger: ShadowPredictionLedge
     for s_date in ["2026-11-02", "2026-11-03"]:
         vec = build_synthetic_feature_vector(
             session_date=s_date,
-            observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
-            availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
-            cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )
         report = validator.validate(vec)

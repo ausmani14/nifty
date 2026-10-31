@@ -2,8 +2,8 @@ name: NIFTY AI Daily Shadow Operations
 
 on:
   schedule:
-    # 03:05 UTC = 08:35 AM IST (Monday to Friday) -> Pre-market Snapshot B preparation
-    - cron: '5 3 * * 1-5'
+    # 03:22 UTC = 08:52 AM IST (Monday to Friday) -> Pre-market Snapshot B execution (post-08:50 cutoff, pre-09:15 open)
+    - cron: '22 3 * * 1-5'
     # 10:10 UTC = 03:40 PM IST (Monday to Friday) -> Post-market Outcome Reconciliation
     - cron: '10 10 * * 1-5'
   workflow_dispatch:

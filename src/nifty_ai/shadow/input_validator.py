@@ -24,6 +24,7 @@ from nifty_ai.shadow.contracts import (
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 SNAPSHOT_B_CUTOFF_TIME = time(8, 50, 0)
+PREMARKET_DEADLINE_TIME = time(9, 15, 0)
 
 
 def compute_feature_vector_hash(feature_names: List[str], feature_values: List[float]) -> str:
@@ -50,10 +51,14 @@ class SnapshotBInputValidator:
         if current_time is not None:
             now_dt = current_time.astimezone(timezone.utc)
         else:
-            today_ist_str = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).strftime("%Y-%m-%d")
-            if feature_vector.session_date > today_ist_str:
-                now_dt = feature_vector.cutoff_time.astimezone(timezone.utc)
-            else:
+            try:
+                target_dt = datetime.strptime(feature_vector.session_date, "%Y-%m-%d").date()
+                today_ist = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).date()
+                if target_dt > today_ist:
+                    now_dt = datetime.combine(target_dt, SNAPSHOT_B_CUTOFF_TIME, tzinfo=MARKET_TIMEZONE).astimezone(timezone.utc)
+                else:
+                    now_dt = datetime.now(timezone.utc)
+            except Exception:
                 now_dt = datetime.now(timezone.utc)
         report = ValidationReport(
             validation_id=f"val_{feature_vector.session_date}_{now_dt.strftime('%Y%m%d_%H%M%S')}",
@@ -145,21 +150,59 @@ class SnapshotBInputValidator:
         else:
             report.passed_checks.append("TIMEZONE_AWARENESS")
 
-        # 5. Point-in-time Cutoff Check (08:50:00 Asia/Kolkata)
+        # 5. Point-in-time Cutoff and Evaluation Window Checks
+        try:
+            target_session_dt = datetime.strptime(feature_vector.session_date, "%Y-%m-%d").date()
+        except ValueError:
+            report.failed_checks.append("SESSION_DATE_FORMAT")
+            report.error_messages.append(f"Invalid session date format '{feature_vector.session_date}'.")
+            report.status = ValidationStatus.FAILED
+            report.is_eligible_for_inference = False
+            return report
+
+        expected_cutoff = datetime.combine(target_session_dt, SNAPSHOT_B_CUTOFF_TIME, tzinfo=MARKET_TIMEZONE)
         cutoff_ist = feature_vector.cutoff_time.astimezone(MARKET_TIMEZONE)
-        if cutoff_ist.time() > SNAPSHOT_B_CUTOFF_TIME:
-            report.failed_checks.append("CUTOFF_TIME_ENFORCEMENT")
+
+        # Invariant: Cutoff calendar date must match target session date (Issue 3)
+        if cutoff_ist.date() != target_session_dt:
+            report.failed_checks.append("CUTOFF_DATE_MISMATCH")
             report.error_messages.append(
-                f"Cutoff time {cutoff_ist.time()} exceeds mandatory 08:50:00 IST Snapshot B boundary."
+                f"Cutoff calendar date '{cutoff_ist.date()}' does not match target session date '{target_session_dt}'."
             )
-        elif cutoff_ist.time() != SNAPSHOT_B_CUTOFF_TIME:
+        else:
+            report.passed_checks.append("CUTOFF_DATE_MISMATCH")
+
+        # Invariant: Cutoff time must be exactly 08:50:00 IST
+        if cutoff_ist.time() != SNAPSHOT_B_CUTOFF_TIME:
             report.failed_checks.append("CUTOFF_TIME_ENFORCEMENT")
             report.error_messages.append(
-                f"Cutoff time {cutoff_ist.time()} does not match mandatory 08:50:00 IST Snapshot B boundary. "
+                f"Cutoff time '{cutoff_ist.time()}' does not match mandatory 08:50:00 IST Snapshot B boundary. "
                 f"Pre-cutoff observations cannot substitute for the 08:50 information set."
             )
         else:
             report.passed_checks.append("CUTOFF_TIME_ENFORCEMENT")
+
+        # Invariant: Evaluation time must be AT OR AFTER cutoff (Issue 1)
+        eval_ist = now_dt.astimezone(MARKET_TIMEZONE)
+        if eval_ist < expected_cutoff:
+            report.failed_checks.append("EVALUATION_AFTER_CUTOFF")
+            report.error_messages.append(
+                f"Evaluation time {eval_ist.strftime('%H:%M:%S IST')} is before 08:50:00 IST information cutoff. "
+                f"Prospective Snapshot B predictions cannot be generated prematurely."
+            )
+        else:
+            report.passed_checks.append("EVALUATION_AFTER_CUTOFF")
+
+        # Invariant: Evaluation time must be BEFORE 09:15:00 IST market open deadline (Issue 1 & 2)
+        premarket_deadline = datetime.combine(target_session_dt, PREMARKET_DEADLINE_TIME, tzinfo=MARKET_TIMEZONE)
+        if eval_ist >= premarket_deadline:
+            report.failed_checks.append("PREMARKET_DEADLINE_ENFORCEMENT")
+            report.error_messages.append(
+                f"Evaluation time {eval_ist.strftime('%H:%M:%S IST')} is at or after 09:15:00 IST market open deadline. "
+                f"Pre-market prospective prediction window has closed."
+            )
+        else:
+            report.passed_checks.append("PREMARKET_DEADLINE_ENFORCEMENT")
 
         # 6. Availability and Observation timestamp checks
         avail_ist = feature_vector.provenance.availability_time.astimezone(MARKET_TIMEZONE)
