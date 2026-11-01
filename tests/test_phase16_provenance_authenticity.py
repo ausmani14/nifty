@@ -1133,3 +1133,67 @@ def test_35_deterministic_canonical_json_profile_rfc8785():
     h3 = compute_manifest_hash(perturbed)
     assert h1 != h3
 
+
+# ---------------------------------------------------------------------------
+# 36. Operational Evidence Retention Gate (Issue 3 / Acceptance Audit)
+# ---------------------------------------------------------------------------
+def test_36_operational_evidence_retention_gate_blocks_production_append(tmp_path: Path, monkeypatch):
+    """Verify evidence retention gate blocks production ledger append when durable retention is not configured."""
+    from scripts.run_daily_ops import is_durable_evidence_retention_configured, run_snapshot_b
+    from nifty_ai.shadow.ledger import ShadowPredictionLedger
+
+    # 1. Default state: not configured
+    monkeypatch.delenv("DURABLE_EVIDENCE_RETENTION_ENABLED", raising=False)
+    assert is_durable_evidence_retention_configured() is False
+
+    # 2. Configured explicitly
+    monkeypatch.setenv("DURABLE_EVIDENCE_RETENTION_ENABLED", "true")
+    assert is_durable_evidence_retention_configured() is True
+    monkeypatch.delenv("DURABLE_EVIDENCE_RETENTION_ENABLED", raising=False)
+
+    # 3. Running snapshot_b without durable retention for today (or non-trading day)
+    # Production ledger must remain at 0 records
+    real_ledger = ShadowPredictionLedger()
+    assert len(real_ledger.get_all_records()) == 0
+
+    # 4. Verify that if a valid vector reaches the gate, ledger append is blocked
+    from nifty_ai.shadow.live_data import CaptureStatus, DataCaptureResult
+    from tests.fixtures.synthetic_inputs import build_test_prospective_feature_vector
+
+    valid_vec = build_test_prospective_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+    )
+    fake_capture = DataCaptureResult(
+        status=CaptureStatus.SUCCESS,
+        session_date="2026-11-02",
+        feature_vector=valid_vec,
+    )
+
+    # Monkeypatch attempt_live_feature_capture to return fake_capture
+    monkeypatch.setattr("scripts.run_daily_ops.attempt_live_feature_capture", lambda **kwargs: fake_capture)
+    monkeypatch.setattr("scripts.run_daily_ops.SnapshotBInputValidator.validate", lambda self, vec: type("Rep", (), {"is_eligible_for_inference": True})())
+
+    # Monkeypatch date checks to allow execution
+    monkeypatch.setattr("scripts.run_daily_ops.datetime", type("MockDT", (), {
+        "now": classmethod(lambda cls, tz=None: datetime(2026, 11, 2, 8, 55, 0, tzinfo=MARKET_TIMEZONE)),
+        "strptime": datetime.strptime,
+        "combine": datetime.combine,
+    }))
+
+    mock_exports = {}
+    class MockExporter:
+        def export_all(self, current_system_state="", latest_error=""):
+            mock_exports["state"] = current_system_state
+            mock_exports["error"] = latest_error
+
+    monkeypatch.setattr("scripts.run_daily_ops.WebsiteDataExporter", MockExporter)
+
+    ret = run_snapshot_b(session_date="2026-11-02")
+    assert ret == 0
+    assert mock_exports.get("state") == "EVIDENCE_RETENTION_BLOCKED"
+    assert "Durable raw evidence retention is NOT CONFIGURED" in mock_exports.get("error", "")
+    assert len(real_ledger.get_all_records()) == 0
+
+
+

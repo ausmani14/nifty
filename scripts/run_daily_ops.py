@@ -38,6 +38,17 @@ MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 ALLOWED_OPERATIONS = {"snapshot_b", "reconcile_outcomes", "health_check", "dry_run"}
 
 
+def is_durable_evidence_retention_configured() -> bool:
+    """Check if durable, non-ephemeral audit storage is configured for raw evidence payloads.
+
+    Returns True only if an explicit durable audit storage backend is configured and verified.
+    Defaults to False to enforce fail-closed behavior in ephemeral cloud runners where local
+    disk is destroyed upon workflow completion and excluded from Git.
+    """
+    import os
+    return os.environ.get("DURABLE_EVIDENCE_RETENTION_ENABLED", "").lower() in ("true", "1", "yes")
+
+
 def run_snapshot_b(session_date: str, input_file: str = None) -> int:
     today_ist_str = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).strftime("%Y-%m-%d")
     if not session_date:
@@ -97,7 +108,22 @@ def run_snapshot_b(session_date: str, input_file: str = None) -> int:
         exporter.export_all(current_system_state="VALIDATION_FAILED", latest_error=str(val_report.error_messages))
         return 1
 
-    # 4. Generate Inference & Record in Ledger
+    # 4. Durable Evidence Retention Gate
+    # In ephemeral runner environments (e.g. GitHub Actions), local storage in data/shadow/raw_captures/
+    # is destroyed upon workflow completion and excluded from Git tracking. A prospective prediction cannot
+    # be appended to the production ledger if referenced raw payload artifacts cannot be durably
+    # retained for post-run independent verification.
+    if not is_durable_evidence_retention_configured():
+        reason = (
+            "Durable raw evidence retention is NOT CONFIGURED. "
+            "Local storage in data/shadow/raw_captures/ is ephemeral in CI/CD and excluded from Git tracking. "
+            "Production ledger append is blocked to preserve audit trail integrity."
+        )
+        print(f"      [BLOCKED: EVIDENCE_RETENTION_BLOCKED] {reason}", file=sys.stderr)
+        exporter.export_all(current_system_state="EVIDENCE_RETENTION_BLOCKED", latest_error=reason)
+        return 0
+
+    # 5. Generate Inference & Record in Ledger
     ledger = ShadowPredictionLedger()
     runner = ShadowInferenceRunner()
     tip_hash = ledger.get_tip_hash()
