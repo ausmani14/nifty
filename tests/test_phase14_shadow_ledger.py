@@ -8,7 +8,10 @@ from zoneinfo import ZoneInfo
 
 from nifty_ai.shadow.contracts import LedgerStatus, ProvenanceType
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 from nifty_ai.shadow.ledger import GENESIS_HASH, ShadowPredictionLedger
 
@@ -31,7 +34,7 @@ def test_append_single_prediction_and_chaining(temp_ledger: ShadowPredictionLedg
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -56,7 +59,7 @@ def test_duplicate_prediction_idempotency(temp_ledger: ShadowPredictionLedger):
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -83,7 +86,7 @@ def test_chain_verification_detects_tampering(temp_ledger: ShadowPredictionLedge
 
     # Add 2 predictions
     for s_date in ["2026-11-02", "2026-11-03"]:
-        vec = build_synthetic_feature_vector(
+        vec = build_verified_prospective_feature_vector(
             session_date=s_date,
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )

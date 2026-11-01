@@ -11,7 +11,10 @@ from nifty_ai.shadow.contracts import (
     SourceProvenance,
     ValidationStatus,
 )
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import (
     ACTIVATION_BOUNDARY_UTC,
     SnapshotBInputValidator,
@@ -24,7 +27,7 @@ MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 def test_valid_synthetic_feature_vector_passes():
     validator = SnapshotBInputValidator()
     # Create valid prospective feature vector after activation boundary
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),

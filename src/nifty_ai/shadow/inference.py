@@ -208,6 +208,29 @@ class ShadowInferenceRunner:
                 f"Only {[p.value for p in allowed_prospective]} are authorized for inference."
             )
 
+        # 9. Source manifest defense-in-depth enforcement
+        prov = feature_vector.provenance
+        if not getattr(prov, "source_manifest", None) or len(prov.source_manifest) == 0:
+            raise ValueError("Inference rejected: Prospective prediction requires non-empty source_manifest.")
+
+        # Reject synthetic test providers
+        if any(sub in (prov.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+            raise ValueError(f"Inference rejected: Synthetic/test vector source_id '{prov.source_id}'.")
+        for src in prov.source_manifest:
+            if any(sub in (src.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+                raise ValueError(f"Inference rejected: Synthetic/test source provider '{src.source_id}'.")
+            if not src.raw_payload_hash or len(src.raw_payload_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in src.raw_payload_hash):
+                raise ValueError(f"Inference rejected: Invalid raw_payload_hash for source {src.instrument_symbol}.")
+
+        # Operator attestation verification
+        if prov.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE:
+            if getattr(prov, "attestation", None) is None:
+                raise ValueError("Inference rejected: OPERATOR_ATTESTED_PROSPECTIVE requires cryptographic attestation.")
+            from nifty_ai.shadow.crypto import verify_attestation
+            is_valid, sig_err = verify_attestation(feature_vector, prov.attestation)
+            if not is_valid:
+                raise ValueError(f"Inference rejected: Operator attestation signature verification failed: {sig_err}")
+
         if self.model is None:
             raise RuntimeError("Model is not initialized.")
 

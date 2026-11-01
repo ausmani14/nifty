@@ -10,7 +10,10 @@ from nifty_ai.shadow.contracts import (
     ProvenanceType,
 )
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 from nifty_ai.shadow.ledger import ShadowPredictionLedger
 from nifty_ai.shadow.reconciliation import ShadowOutcomeReconciler
@@ -64,7 +67,7 @@ def test_end_to_end_reconciliation_and_metrics(isolated_shadow_system):
 
     for idx, s_date in enumerate(dates):
         # 1. Pre-market input capture at 08:45 IST
-        vec = build_synthetic_feature_vector(
+        vec = build_verified_prospective_feature_vector(
             session_date=s_date,
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )

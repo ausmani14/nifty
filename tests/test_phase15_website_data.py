@@ -14,7 +14,10 @@ from nifty_ai.shadow.contracts import (
     ProvenanceType,
 )
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 from nifty_ai.shadow.ledger import ShadowPredictionLedger
 from nifty_ai.shadow.reconciliation import ShadowOutcomeReconciler
@@ -70,9 +73,9 @@ def test_populated_ledger_website_exports(isolated_exporter):
     validator = SnapshotBInputValidator()
 
     # 1. Add mock prediction
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
-        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     rep = validator.validate(vec, current_time=eval_time)

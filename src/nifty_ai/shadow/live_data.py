@@ -259,53 +259,121 @@ def attempt_live_feature_capture(
                     metadata={"avail_utc": avail_utc.isoformat(), "now_utc": now_utc.isoformat()},
                 )
 
-            # Invariant 7: Source-level provenance manifest validation (if present)
-            if vec.provenance.source_manifest:
-                for src in vec.provenance.source_manifest:
-                    if src.observation_time is None or src.observation_time.tzinfo is None:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol}: observation_time lacks timezone awareness.",
-                        )
-                    if src.availability_time is None or src.availability_time.tzinfo is None:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol}: availability_time lacks timezone awareness.",
-                        )
-                    s_obs_utc = src.observation_time.astimezone(timezone.utc)
-                    s_avail_utc = src.availability_time.astimezone(timezone.utc)
-                    if s_obs_utc > cutoff_utc or s_avail_utc > cutoff_utc:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol} timestamp exceeds cutoff {cutoff_utc.isoformat()}.",
-                        )
-                    if s_avail_utc > now_utc or s_obs_utc > now_utc:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol} timestamp is in future relative to evaluation time {now_utc.isoformat()}.",
-                        )
-                    if s_obs_utc < ACTIVATION_BOUNDARY_UTC or s_avail_utc < ACTIVATION_BOUNDARY_UTC:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol} timestamp precedes activation boundary {ACTIVATION_BOUNDARY_UTC.isoformat()}.",
-                        )
-                    if src.provenance_type not in valid_provs:
-                        return DataCaptureResult(
-                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
-                            session_date=session_date,
-                            feature_vector=None,
-                            reason=f"Source {src.instrument_symbol} non-prospective provenance '{src.provenance_type.value}'.",
-                        )
+            # Invariant 7: Source-level provenance manifest validation (mandatory for prospective capture)
+            if not vec.provenance.source_manifest or len(vec.provenance.source_manifest) == 0:
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason="Source provenance manifest is mandatory for prospective prediction. Found empty or missing source_manifest.",
+                    metadata={"source_file": str(input_file_path)},
+                )
+
+            # Invariant 8: Reject synthetic/test providers from prospective capture
+            if any(sub in (vec.provenance.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+                return DataCaptureResult(
+                    status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                    session_date=session_date,
+                    feature_vector=None,
+                    reason=f"Vector source_id '{vec.provenance.source_id}' is a synthetic/test identifier, rejected from prospective pipeline.",
+                    metadata={"source_file": str(input_file_path)},
+                )
+
+            for src in vec.provenance.source_manifest:
+                if any(sub in (src.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: provider '{src.source_id}' is a synthetic/test identifier.",
+                    )
+                if not src.raw_payload_hash or len(src.raw_payload_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in src.raw_payload_hash):
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash.",
+                    )
+                if src.observation_time is None or src.observation_time.tzinfo is None:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: observation_time lacks timezone awareness.",
+                    )
+                if src.availability_time is None or src.availability_time.tzinfo is None:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: availability_time lacks timezone awareness.",
+                    )
+                if src.ingestion_time is None or src.ingestion_time.tzinfo is None:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: ingestion_time lacks timezone awareness.",
+                    )
+                s_obs_utc = src.observation_time.astimezone(timezone.utc)
+                s_avail_utc = src.availability_time.astimezone(timezone.utc)
+                s_ingest_utc = src.ingestion_time.astimezone(timezone.utc)
+
+                # Ordering: obs <= avail <= ingest <= now_dt
+                if s_obs_utc > s_avail_utc or s_avail_utc > s_ingest_utc or s_ingest_utc > now_utc:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: timestamp ordering violation (obs <= avail <= ingest <= eval).",
+                    )
+                if s_obs_utc > cutoff_utc or s_avail_utc > cutoff_utc:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol} timestamp exceeds cutoff {cutoff_utc.isoformat()}.",
+                    )
+                if s_avail_utc > now_utc or s_obs_utc > now_utc:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol} timestamp is in future relative to evaluation time {now_utc.isoformat()}.",
+                    )
+                if s_obs_utc < ACTIVATION_BOUNDARY_UTC or s_avail_utc < ACTIVATION_BOUNDARY_UTC or s_ingest_utc < ACTIVATION_BOUNDARY_UTC:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol} timestamp precedes activation boundary {ACTIVATION_BOUNDARY_UTC.isoformat()}.",
+                    )
+                if src.provenance_type != vec.provenance.provenance_type or src.provenance_type not in valid_provs:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol} provenance mismatch or non-prospective type '{src.provenance_type.value}'.",
+                    )
+
+            # Invariant 9: Operator Attestation Verification
+            if vec.provenance.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE:
+                if getattr(vec.provenance, "attestation", None) is None:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason="Operator attestation is required for OPERATOR_ATTESTED_PROSPECTIVE. Self-declared input without cryptographic signature is rejected.",
+                    )
+                from nifty_ai.shadow.crypto import verify_attestation
+                is_valid, sig_err = verify_attestation(vec, vec.provenance.attestation)
+                if not is_valid:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Operator attestation cryptographic verification failed: {sig_err}",
+                    )
 
             attestation_tier = "OPERATOR_ATTESTED" if vec.provenance.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE else "LIVE_CAPTURE"
             return DataCaptureResult(

@@ -33,7 +33,10 @@ from nifty_ai.shadow.contracts import (
     ValidationStatus,
 )
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import (
     SNAPSHOT_B_CUTOFF_TIME,
     SnapshotBInputValidator,
@@ -134,7 +137,7 @@ def test_group_a_detects_wrong_tree_count(tmp_path: Path):
 def test_group_a_inference_defense_in_depth_rejects_malformed_features():
     """Inference runner directly rejects bad feature lists without trusting caller."""
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = validator.validate(vec, current_time=eval_time)
@@ -173,7 +176,7 @@ def test_group_a_inference_defense_in_depth_rejects_malformed_features():
 def test_group_b_valid_pit_timestamp_passes():
     """Valid observation timestamp prior to 08:50 IST passes."""
     validator = SnapshotBInputValidator()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = validator.validate(vec, current_time=eval_time)
     assert report.status == ValidationStatus.PASSED
@@ -266,7 +269,7 @@ def test_group_c_ledger_append_idempotency_and_chaining(tmp_path: Path):
     assert ledger.get_tip_hash() == "0" * 64
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = validator.validate(vec, current_time=eval_time)
@@ -291,7 +294,7 @@ def test_group_c_ledger_detects_tampering(tmp_path: Path):
     ledger_file = tmp_path / "test_ledger.jsonl"
     ledger = ShadowPredictionLedger(ledger_path=ledger_file)
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
@@ -319,7 +322,7 @@ def test_group_d_reconciliation_lifecycle(tmp_path: Path):
     reconciler = ShadowOutcomeReconciler(prediction_ledger=ledger, outcomes_path=out_file)
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
@@ -367,7 +370,7 @@ def test_group_d_reconciler_rejects_invalid_prices(tmp_path: Path):
     reconciler = ShadowOutcomeReconciler(prediction_ledger=ledger, outcomes_path=out_file)
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     ledger.append_prediction(runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash()))
@@ -464,7 +467,7 @@ def test_group_g_isolated_end_to_end_preserves_real_ledger():
         t_exporter = WebsiteDataExporter(output_dir=web_p, mirror_dir=mir_p, prediction_ledger=t_ledger, outcome_reconciler=t_reconciler)
 
         # 1. Prediction
-        vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+        vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
         eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
         rep = SnapshotBInputValidator().validate(vec, current_time=eval_time)
         pred = ShadowInferenceRunner().predict(vec, rep, prev_record_hash=t_ledger.get_tip_hash())

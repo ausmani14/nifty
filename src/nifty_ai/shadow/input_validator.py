@@ -13,9 +13,12 @@ from zoneinfo import ZoneInfo
 
 from nifty_ai.shadow.contracts import (
     ACTIVATION_BOUNDARY_UTC,
-    CANONICAL_FEATURES_63,
-    CANONICAL_PRICE_FEATURES_45,
+    CANONICAL_CALENDAR_5,
+    CANONICAL_CONTEXT_MAPPING,
     CANONICAL_CONTEXT_FEATURES_18,
+    CANONICAL_FEATURES_63,
+    CANONICAL_PRICE_DERIVED_40,
+    CANONICAL_PRICE_FEATURES_45,
     FeatureVector,
     ProvenanceType,
     ValidationReport,
@@ -285,13 +288,26 @@ class SnapshotBInputValidator:
 
         # 6. Provenance & Activation Boundary check
         prov = feature_vector.provenance
-        if prov.provenance_type == ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+        allowed_prospective = {
+            ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+            ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        }
+        if not allow_historical_research and prov.provenance_type not in allowed_prospective:
+            report.failed_checks.append("PROVENANCE_AUTHORIZATION")
+            report.error_messages.append(
+                f"Provenance type '{prov.provenance_type.value}' is not authorized for prospective inference. "
+                f"Quarantined, synthetic, or historical vectors cannot enter the prospective pipeline."
+            )
+        else:
+            report.passed_checks.append("PROVENANCE_AUTHORIZATION")
+
+        if prov.provenance_type in allowed_prospective:
             obs_utc = prov.observation_time.astimezone(timezone.utc)
             if obs_utc < self.activation_boundary_utc:
                 report.failed_checks.append("ACTIVATION_BOUNDARY_PROSPECTIVE")
                 report.error_messages.append(
                     f"Observation timestamp {obs_utc.isoformat()} is prior to system activation boundary "
-                    f"{self.activation_boundary_utc.isoformat()}. Cannot classify as prospective_live_capture."
+                    f"{self.activation_boundary_utc.isoformat()}. Cannot classify as {prov.provenance_type.value}."
                 )
             else:
                 report.passed_checks.append("ACTIVATION_BOUNDARY_PROSPECTIVE")
@@ -311,29 +327,100 @@ class SnapshotBInputValidator:
             report.passed_checks.append("FEATURE_HASH_INTEGRITY")
 
         # 8. Source-Level Provenance Manifest Validation
+        prov = feature_vector.provenance
+
+        # Invariant: Source manifest is strictly mandatory for all prospective predictions
+        is_prospective = prov and prov.provenance_type in {
+            ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+            ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        }
+
+        if is_prospective and (not prov or not getattr(prov, "source_manifest", None) or len(prov.source_manifest) == 0):
+            report.failed_checks.append("SOURCE_PROVENANCE_MANIFEST")
+            report.error_messages.append(
+                "Source provenance manifest is mandatory for prospective prediction. "
+                "Found empty or missing source_manifest."
+            )
+            report.status = ValidationStatus.FAILED
+            report.is_eligible_for_inference = False
+            return report
+
         if prov and getattr(prov, "source_manifest", None):
             manifest_errors = []
-            covered_features = set()
+            seen_features = set()
+            duplicate_features = []
+            unknown_features = []
+
+            # Invariant: Reject synthetic/test providers in prospective production pipeline
+            if is_prospective:
+                if any(sub in (prov.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+                    manifest_errors.append(
+                        f"Vector source_id '{prov.source_id}' is a synthetic/test identifier, rejected from prospective pipeline."
+                    )
 
             for src in prov.source_manifest:
-                covered_features.update(src.feature_names)
+                # Provenance type matching
+                if src.provenance_type != prov.provenance_type:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: provenance type '{src.provenance_type.value}' "
+                        f"does not match vector provenance type '{prov.provenance_type.value}'."
+                    )
+
+                # Source provider rejection
+                if is_prospective and any(sub in (src.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: provider '{src.source_id}' is a synthetic/test identifier."
+                    )
+
+                # Raw payload hash check: must be valid 64-hex SHA-256 hash
+                if not src.raw_payload_hash or len(src.raw_payload_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in src.raw_payload_hash):
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash, got '{src.raw_payload_hash}'."
+                    )
+
+                # Track feature coverage
+                for feat in src.feature_names:
+                    if feat in seen_features:
+                        duplicate_features.append(feat)
+                    seen_features.add(feat)
+                    if feat not in CANONICAL_FEATURES_63:
+                        unknown_features.append(feat)
 
                 # Timezone awareness
+                time_naive = False
                 if src.observation_time is None or src.observation_time.tzinfo is None:
                     manifest_errors.append(f"Source {src.instrument_symbol}: observation_time lacks timezone awareness.")
+                    time_naive = True
                 if src.availability_time is None or src.availability_time.tzinfo is None:
                     manifest_errors.append(f"Source {src.instrument_symbol}: availability_time lacks timezone awareness.")
+                    time_naive = True
                 if src.ingestion_time is None or src.ingestion_time.tzinfo is None:
                     manifest_errors.append(f"Source {src.instrument_symbol}: ingestion_time lacks timezone awareness.")
+                    time_naive = True
 
-                if manifest_errors:
+                if time_naive:
                     continue
 
                 src_obs_utc = src.observation_time.astimezone(timezone.utc)
                 src_avail_utc = src.availability_time.astimezone(timezone.utc)
+                src_ingest_utc = src.ingestion_time.astimezone(timezone.utc)
                 cutoff_utc = expected_cutoff.astimezone(timezone.utc)
 
-                # 1. 08:50 IST information cutoff
+                # 1. Timestamp ordering: observation <= availability <= ingestion <= evaluation
+                if src_obs_utc > src_avail_utc:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: observation time {src_obs_utc.isoformat()} is after availability time {src_avail_utc.isoformat()}."
+                    )
+                if src_avail_utc > src_ingest_utc:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: availability time {src_avail_utc.isoformat()} is after ingestion time {src_ingest_utc.isoformat()}."
+                    )
+                if src_ingest_utc > now_dt:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: ingestion time {src_ingest_utc.isoformat()} is in future relative to evaluation time {now_dt.isoformat()}."
+                    )
+
+                # 2. 08:50 IST information cutoff
                 if src_obs_utc > cutoff_utc:
                     manifest_errors.append(
                         f"Source {src.instrument_symbol}: observation time {src_obs_utc.isoformat()} is after cutoff {cutoff_utc.isoformat()}."
@@ -343,7 +430,7 @@ class SnapshotBInputValidator:
                         f"Source {src.instrument_symbol}: availability time {src_avail_utc.isoformat()} is after cutoff {cutoff_utc.isoformat()}."
                     )
 
-                # 2. Actual inference evaluation time
+                # 3. Actual inference evaluation time
                 if src_avail_utc > now_dt:
                     manifest_errors.append(
                         f"Source {src.instrument_symbol}: availability time {src_avail_utc.isoformat()} is in future relative to evaluation time {now_dt.isoformat()}."
@@ -353,7 +440,7 @@ class SnapshotBInputValidator:
                         f"Source {src.instrument_symbol}: observation time {src_obs_utc.isoformat()} is in future relative to evaluation time {now_dt.isoformat()}."
                     )
 
-                # 3. Maximum permitted staleness (7 calendar days = 604,800 seconds)
+                # 4. Maximum permitted staleness (7 calendar days = 604,800 seconds, recomputed)
                 MAX_PERMITTED_STALENESS = 7 * 86400.0
                 src_staleness = (cutoff_utc - src_obs_utc).total_seconds()
                 if src_staleness > MAX_PERMITTED_STALENESS:
@@ -365,25 +452,66 @@ class SnapshotBInputValidator:
                         f"Source {src.instrument_symbol}: negative staleness (observation in future relative to cutoff)."
                     )
 
-                # 4. System activation boundary
+                # 5. System activation boundary (applied consistently to both prospective types)
                 if src.provenance_type in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}:
-                    if src_obs_utc < self.activation_boundary_utc or src_avail_utc < self.activation_boundary_utc:
+                    if src_obs_utc < self.activation_boundary_utc or src_avail_utc < self.activation_boundary_utc or src_ingest_utc < self.activation_boundary_utc:
                         manifest_errors.append(
                             f"Source {src.instrument_symbol}: timestamp precedes system activation boundary {self.activation_boundary_utc.isoformat()}."
                         )
 
-                # 5. Provenance classification
-                if src.provenance_type not in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}:
+                # 6. Provenance classification
+                if is_prospective and src.provenance_type not in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}:
                     manifest_errors.append(
                         f"Source {src.instrument_symbol}: non-prospective provenance '{src.provenance_type.value}'."
                     )
 
+                # 7. Exact Instrument and Feature Mapping Audit
+                if src.instrument_symbol in {"^NSEI", "NSEI"}:
+                    if src.feature_family != "price_derived":
+                        manifest_errors.append(f"Source {src.instrument_symbol}: expected family 'price_derived', got '{src.feature_family}'.")
+                    if tuple(src.feature_names) != CANONICAL_PRICE_DERIVED_40:
+                        manifest_errors.append(f"Source {src.instrument_symbol}: feature names do not match canonical 40 price-derived features.")
+                elif src.instrument_symbol == "CALENDAR":
+                    if src.feature_family != "calendar":
+                        manifest_errors.append(f"Source CALENDAR: expected family 'calendar', got '{src.feature_family}'.")
+                    if tuple(src.feature_names) != CANONICAL_CALENDAR_5:
+                        manifest_errors.append(f"Source CALENDAR: feature names do not match canonical 5 calendar features.")
+                elif src.instrument_symbol in CANONICAL_CONTEXT_MAPPING:
+                    exp_family, exp_feats = CANONICAL_CONTEXT_MAPPING[src.instrument_symbol]
+                    if src.feature_family != exp_family:
+                        manifest_errors.append(f"Source {src.instrument_symbol}: expected family '{exp_family}', got '{src.feature_family}'.")
+                    if tuple(src.feature_names) != exp_feats:
+                        manifest_errors.append(f"Source {src.instrument_symbol}: expected features {exp_feats}, got {tuple(src.feature_names)}.")
+                else:
+                    manifest_errors.append(f"Source {src.instrument_symbol}: unknown or unsupported instrument symbol.")
+
             # Check coverage of canonical 63 features
-            missing_manifest_features = set(CANONICAL_FEATURES_63) - covered_features
+            missing_manifest_features = set(CANONICAL_FEATURES_63) - seen_features
             if missing_manifest_features:
                 manifest_errors.append(
-                    f"Source manifest incomplete: {len(missing_manifest_features)} features lack source provenance."
+                    f"Source manifest incomplete: {len(missing_manifest_features)} features lack source provenance: {sorted(missing_manifest_features)}."
                 )
+            if duplicate_features:
+                manifest_errors.append(
+                    f"Source manifest contains duplicate feature assignments: {sorted(duplicate_features)}."
+                )
+            if unknown_features:
+                manifest_errors.append(
+                    f"Source manifest contains unknown features: {sorted(unknown_features)}."
+                )
+
+            # 8. Cryptographic Operator Attestation Verification
+            if prov.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE:
+                if getattr(prov, "attestation", None) is None:
+                    manifest_errors.append(
+                        "Operator attestation is required for OPERATOR_ATTESTED_PROSPECTIVE. "
+                        "Self-declared metadata without cryptographic signature is rejected."
+                    )
+                else:
+                    from nifty_ai.shadow.crypto import verify_attestation
+                    is_valid, sig_err = verify_attestation(feature_vector, prov.attestation)
+                    if not is_valid:
+                        manifest_errors.append(f"Operator attestation cryptographic verification failed: {sig_err}")
 
             if manifest_errors:
                 report.failed_checks.append("SOURCE_PROVENANCE_MANIFEST")

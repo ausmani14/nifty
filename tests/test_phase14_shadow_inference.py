@@ -13,7 +13,10 @@ from nifty_ai.shadow.inference import (
     ShadowInferenceRunner,
     verify_frozen_model_artifacts,
 )
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
@@ -30,7 +33,7 @@ def test_inference_runner_initialization_and_prediction():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -78,7 +81,7 @@ def test_deterministic_prediction_reproducibility():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         feature_values=[0.005] * 63,
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),

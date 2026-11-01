@@ -21,7 +21,11 @@ from nifty_ai.shadow.contracts import (
     ValidationStatus,
 )
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import (
+    build_canonical_source_manifest,
+    build_synthetic_feature_vector,
+    build_verified_prospective_feature_vector,
+)
 from nifty_ai.shadow.input_validator import (
     SNAPSHOT_B_CUTOFF_TIME,
     SnapshotBInputValidator,
@@ -533,7 +537,7 @@ def test_regression_valid_current_session_prospective_input(tmp_path: Path):
     """ISSUE 2 Regr 6: Valid current-session prospective input file is accepted and recorded in temp ledger."""
     today_str = "2026-11-02"
     in_file = tmp_path / "valid_vector.json"
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date=today_str,
         observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
@@ -572,7 +576,7 @@ def test_regression_duplicate_prospective_prediction(tmp_path: Path):
 
     today_str = "2026-11-02"
     current_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date=today_str,
         observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
@@ -664,7 +668,7 @@ def test_timing_boundary_condition_3_eval_at_085000_accepted():
     """3. Evaluation at 08:50:00 IST -> accepted."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is True
     assert "EVALUATION_AFTER_CUTOFF" in rep.passed_checks
@@ -674,7 +678,7 @@ def test_timing_boundary_condition_4_eval_at_085001_accepted():
     """4. Evaluation at 08:50:01 IST -> accepted."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 50, 1, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is True
     assert "EVALUATION_AFTER_CUTOFF" in rep.passed_checks
@@ -684,7 +688,7 @@ def test_timing_boundary_condition_5_eval_at_091400_accepted():
     """5. Evaluation at 09:14:00 IST -> accepted."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 9, 14, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is True
     assert "PREMARKET_DEADLINE_ENFORCEMENT" in rep.passed_checks
@@ -694,7 +698,7 @@ def test_timing_boundary_condition_6_eval_at_091500_rejected():
     """6. Evaluation at 09:15:00 IST -> rejected (PREMARKET_DEADLINE_ENFORCEMENT)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 9, 15, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is False
     assert "PREMARKET_DEADLINE_ENFORCEMENT" in rep.failed_checks
@@ -704,7 +708,7 @@ def test_timing_boundary_condition_7_correct_date_and_cutoff_accepted():
     """7. Evaluation with correct date and 08:50 cutoff -> accepted."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
@@ -852,7 +856,7 @@ def test_inference_runner_rejects_unpassed_validation_status():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     report = validator.validate(vec, current_time=eval_time)
     assert report.status == ValidationStatus.PASSED
 
@@ -867,7 +871,7 @@ def test_inference_runner_rejects_session_date_mismatch():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     report = validator.validate(vec, current_time=eval_time)
 
     # Mismatched session date
@@ -881,7 +885,7 @@ def test_inference_runner_rejects_unbound_validation_report():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     report = validator.validate(vec, current_time=eval_time)
 
     # Tamper with report's bound vector hash
@@ -895,7 +899,7 @@ def test_inference_runner_rejects_tampered_feature_values():
     runner = ShadowInferenceRunner()
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     report = validator.validate(vec, current_time=eval_time)
 
     # Construct new vector with tampered feature values keeping same hash
@@ -965,7 +969,7 @@ def test_source_manifest_rejects_post_cutoff_source():
         else:
             tainted_manifest.append(s)
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         source_manifest=tainted_manifest,
@@ -1001,7 +1005,7 @@ def test_source_manifest_rejects_excessively_stale_source():
         else:
             tainted_manifest.append(s)
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         source_manifest=tainted_manifest,
@@ -1037,7 +1041,7 @@ def test_source_manifest_rejects_pre_activation_source():
         else:
             tainted_manifest.append(s)
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         source_manifest=tainted_manifest,
@@ -1048,3 +1052,381 @@ def test_source_manifest_rejects_pre_activation_source():
     assert rep.status == ValidationStatus.FAILED
     assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
     assert any("precedes system activation boundary" in err for err in rep.error_messages)
+
+
+# ---------------------------------------------------------------------------
+# ISSUE 8: 18 Rigorous Source-Provenance & Manifest Integration Tests
+# ---------------------------------------------------------------------------
+
+def test_issue8_scenario_01_empty_source_manifest():
+    """1. Empty source_manifest fails closed."""
+    from dataclasses import replace
+    base_vec = build_verified_prospective_feature_vector("2026-11-02")
+    empty_prov = replace(base_vec.provenance, source_manifest=[])
+    vec = replace(base_vec, provenance=empty_prov)
+
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert rep.is_eligible_for_inference is False
+    assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
+    assert any("Source provenance manifest is mandatory" in err for err in rep.error_messages)
+
+    runner = ShadowInferenceRunner()
+    with pytest.raises(ValueError, match=r"(Validation failed with errors|Prospective prediction requires non-empty source_manifest)"):
+        runner.predict(vec, rep)
+
+
+def test_issue8_scenario_02_missing_source_manifest():
+    """2. Missing (None) source_manifest fails closed."""
+    from dataclasses import replace
+    base_vec = build_verified_prospective_feature_vector("2026-11-02")
+    empty_prov = replace(base_vec.provenance, source_manifest=None)
+    vec = replace(base_vec, provenance=empty_prov)
+
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert rep.is_eligible_for_inference is False
+    assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
+
+
+def test_issue8_scenario_03_synthetic_vector_default_parameters():
+    """3. Synthetic feature vector using its default parameters is INVALID_OR_QUARANTINED."""
+    vec = build_synthetic_feature_vector("2026-11-02")
+    assert vec.provenance.provenance_type == ProvenanceType.INVALID_OR_QUARANTINED
+    assert "Synthetic test fixture" in (vec.provenance.quarantine_reason or "")
+
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.is_eligible_for_inference is False
+
+    runner = ShadowInferenceRunner()
+    with pytest.raises(ValueError, match=r"(Non-prospective provenance|Provenance type 'invalid_or_quarantined' is not authorized)"):
+        runner.predict(vec, rep)
+
+
+def test_issue8_scenario_04_synthetic_vector_manually_relabelled_prospective():
+    """4. Synthetic feature vector manually relabelled PROSPECTIVE_LIVE_CAPTURE fails closed."""
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert rep.is_eligible_for_inference is False
+    assert any("synthetic/test identifier" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_05_fake_descriptive_string_sha256_hashes():
+    """5. Fake descriptive-string SHA-256 hashes fail closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^NSEI":
+            from dataclasses import replace
+            tainted.append(replace(s, raw_payload_hash="not_a_valid_64_hex_hash"))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_06_wrong_instrument_to_feature_mapping():
+    """6. Wrong instrument-to-feature mapping fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^GSPC":
+            from dataclasses import replace
+            # Assign bank nifty return to S&P 500
+            tainted.append(replace(s, feature_names=["ctx_ret_1d_nifty_bank"]))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("Source ^GSPC: expected features" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_07_duplicate_feature_assignment():
+    """7. Duplicate feature assignment across sources fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^GSPC":
+            from dataclasses import replace
+            # Duplicate bank nifty feature in S&P 500
+            tainted.append(replace(s, feature_names=list(s.feature_names) + ["ctx_ret_1d_nifty_bank"]))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("duplicate feature assignments" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_08_missing_feature_assignment():
+    """8. Missing feature assignment in source manifest fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^VIX":
+            from dataclasses import replace
+            # Remove ctx_level_us_vix
+            tainted.append(replace(s, feature_names=["ctx_diff_1d_us_vix"]))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("features lack source provenance" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_09_unknown_feature_assignment():
+    """9. Unknown feature assignment in source manifest fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^DJI":
+            from dataclasses import replace
+            tainted.append(replace(s, feature_names=list(s.feature_names) + ["ctx_unknown_future_metric"]))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("unknown features" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_10_mismatched_vector_and_source_provenance():
+    """10. Mismatched vector-level and source-level provenance fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "BZ=F":
+            from dataclasses import replace
+            tainted.append(replace(s, provenance_type=ProvenanceType.HISTORICAL_BACKFILL))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("does not match vector provenance type" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_11_naive_timestamp_in_vector(tmp_path: Path):
+    """11. Naive timestamp in vector cutoff_time is strictly rejected by loader."""
+    from nifty_ai.shadow.input_capture import load_feature_vector_from_json
+    vec = build_verified_prospective_feature_vector("2026-11-02")
+    raw_dict = vec.to_dict()
+    # Strip timezone offset from cutoff_time
+    raw_dict["cutoff_time"] = "2026-11-02T08:50:00"
+
+    test_file = tmp_path / "naive_cutoff.json"
+    test_file.write_text(json.dumps(raw_dict), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="naive. Strict timezone awareness is required"):
+        load_feature_vector_from_json(test_file)
+
+
+def test_issue8_scenario_12_naive_timestamp_in_source_record(tmp_path: Path):
+    """12. Naive timestamp in source record is strictly rejected by loader."""
+    from nifty_ai.shadow.input_capture import load_feature_vector_from_json
+    vec = build_verified_prospective_feature_vector("2026-11-02")
+    raw_dict = vec.to_dict()
+    # Strip timezone offset from first source observation_time
+    raw_dict["provenance"]["source_manifest"][0]["observation_time"] = "2026-11-02T08:45:00"
+
+    test_file = tmp_path / "naive_source.json"
+    test_file.write_text(json.dumps(raw_dict), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="naive. Strict timezone awareness is required"):
+        load_feature_vector_from_json(test_file)
+
+
+def test_issue8_scenario_13_ingestion_time_later_than_evaluation():
+    """13. Ingestion time later than evaluation time fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    future_ingest = datetime(2026, 11, 2, 8, 55, 0, tzinfo=MARKET_TIMEZONE)
+    for s in manifest:
+        if s.instrument_symbol == "^NSEI":
+            from dataclasses import replace
+            tainted.append(replace(s, ingestion_time=future_ingest))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)  # 08:52 is before 08:55 ingestion
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("ingestion time" in err and "is in future relative to evaluation time" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_14_source_observation_before_activation_boundary():
+    """14. Source observation before activation boundary fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    pre_act = datetime(2026, 10, 31, 12, 0, 0, tzinfo=timezone.utc)
+    for s in manifest:
+        if s.instrument_symbol == "GC=F":
+            from dataclasses import replace
+            tainted.append(replace(s, observation_time=pre_act, availability_time=pre_act))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("precedes system activation boundary" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_15_operator_attested_input_without_valid_signature():
+    """15. Operator-attested input without a valid Ed25519 signature fails closed."""
+    from nifty_ai.shadow.contracts import OperatorAttestation
+    from dataclasses import replace
+    manifest = build_canonical_source_manifest(
+        "2026-11-02",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+    )
+    # Taint attestation with invalid forged signature
+    bogus_attestation = OperatorAttestation(
+        operator_id="operator_malicious",
+        key_id="ed25519_key_01",
+        signature="deadbeef" * 16,  # 128 hex chars forged
+        signed_timestamp=datetime(2026, 11, 2, 8, 49, 0, tzinfo=MARKET_TIMEZONE),
+        public_key="0123456789abcdef" * 4,  # 64 hex chars
+    )
+    base_vec = build_verified_prospective_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        source_manifest=manifest,
+    )
+    tainted_prov = replace(base_vec.provenance, attestation=bogus_attestation)
+    vec = replace(base_vec, provenance=tainted_prov)
+
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("Operator attestation cryptographic verification failed" in err for err in rep.error_messages)
+
+    runner = ShadowInferenceRunner()
+    with pytest.raises(ValueError, match=r"Operator attestation.*verification failed"):
+        runner.predict(vec, rep)
+
+
+def test_issue8_scenario_16_altered_payload_after_recorded_hash():
+    """16. Altered payload after a recorded hash is detected by verification."""
+    from nifty_ai.shadow.crypto import verify_raw_payload_sha256
+    import hashlib
+
+    original_payload = b"NIFTY_50_REAL_OHLCV_HISTORY_ROW_001_TO_250"
+    computed_hash = hashlib.sha256(original_payload).hexdigest()
+
+    assert verify_raw_payload_sha256(original_payload, computed_hash) is True
+
+    # Tampered payload
+    tampered_payload = b"NIFTY_50_ALTERED_OHLCV_HISTORY_ROW_001_TO_250"
+    assert verify_raw_payload_sha256(tampered_payload, computed_hash) is False
+
+
+def test_issue8_scenario_17_one_invalid_instrument_among_valid_sources():
+    """17. One invalid instrument among otherwise valid sources fails closed."""
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted = []
+    for s in manifest:
+        if s.instrument_symbol == "^FTSE":
+            from dataclasses import replace
+            tainted.append(replace(s, instrument_symbol="UNKNOWN_CRYPTO_PAIR"))
+        else:
+            tainted.append(s)
+
+    vec = build_verified_prospective_feature_vector("2026-11-02", source_manifest=tainted)
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("unknown or unsupported instrument symbol" in err for err in rep.error_messages)
+
+
+def test_issue8_scenario_18_fully_valid_test_fixture_with_consistent_evidence(tmp_path: Path):
+    """18. A fully valid test fixture with complete internally consistent source evidence passes all gates."""
+    from nifty_ai.shadow.crypto import generate_operator_keypair, create_operator_attestation
+    from dataclasses import replace
+
+    # A: Test fully valid PROSPECTIVE_LIVE_CAPTURE
+    vec_live = build_verified_prospective_feature_vector(
+        session_date="2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep_live = validator.validate(vec_live, current_time=eval_time)
+    assert rep_live.status == ValidationStatus.PASSED
+    assert rep_live.is_eligible_for_inference is True
+
+    temp_ledger = ShadowPredictionLedger(ledger_path=tmp_path / "temp_isolated_ledger.jsonl")
+    runner = ShadowInferenceRunner()
+    pred_live = runner.predict(vec_live, rep_live, prev_record_hash=temp_ledger.get_tip_hash())
+    status, rec = temp_ledger.append_prediction(pred_live)
+    assert status == LedgerStatus.RECORDED
+
+    # B: Test fully valid OPERATOR_ATTESTED_PROSPECTIVE with valid Ed25519 signature
+    priv_key, pub_key = generate_operator_keypair()
+    manifest_att = build_canonical_source_manifest(
+        "2026-11-03",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        source_id="operator_feed",
+    )
+    vec_att_raw = build_verified_prospective_feature_vector(
+        session_date="2026-11-03",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        source_id="operator_feed",
+        source_manifest=manifest_att,
+    )
+    att = create_operator_attestation(
+        feature_vector=vec_att_raw,
+        operator_id="operator_primary",
+        key_id="ed25519_2026_11",
+        private_key_hex=priv_key,
+        signed_timestamp=datetime(2026, 11, 3, 8, 49, 0, tzinfo=MARKET_TIMEZONE),
+    )
+    vec_att = replace(vec_att_raw, provenance=replace(vec_att_raw.provenance, attestation=att))
+    eval_time_b = datetime(2026, 11, 3, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep_att = validator.validate(vec_att, current_time=eval_time_b)
+    assert rep_att.status == ValidationStatus.PASSED
+    assert rep_att.is_eligible_for_inference is True
+
+    pred_att = runner.predict(vec_att, rep_att, prev_record_hash=temp_ledger.get_tip_hash())
+    status2, _ = temp_ledger.append_prediction(pred_att)
+    assert status2 == LedgerStatus.RECORDED

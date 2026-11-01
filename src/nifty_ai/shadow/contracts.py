@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from enum import Enum
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
@@ -29,6 +29,10 @@ CANONICAL_PRICE_FEATURES_45: tuple[str, ...] = (
     "day_of_week", "day_of_month", "month", "quarter", "is_month_end"
 )
 
+# Canonical partitions: 40 price-derived + 5 deterministic calendar
+CANONICAL_PRICE_DERIVED_40: tuple[str, ...] = CANONICAL_PRICE_FEATURES_45[:40]
+CANONICAL_CALENDAR_5: tuple[str, ...] = CANONICAL_PRICE_FEATURES_45[40:45]
+
 CANONICAL_CONTEXT_FEATURES_18: tuple[str, ...] = (
     "ctx_ret_1d_nifty_bank", "ctx_ret_1d_sp500", "ctx_ret_1d_nasdaq",
     "ctx_ret_1d_dow_jones", "ctx_ret_1d_brent_crude", "ctx_ret_1d_wti_crude",
@@ -38,6 +42,26 @@ CANONICAL_CONTEXT_FEATURES_18: tuple[str, ...] = (
     "ctx_diff_1d_us_10y_yield", "ctx_diff_1d_usd_inr",
     "ctx_level_india_vix", "ctx_level_us_vix"
 )
+
+# Canonical source mappings for market context (16 instruments, 18 features)
+CANONICAL_CONTEXT_MAPPING: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    "^NSEBANK": ("market_context", ("ctx_ret_1d_nifty_bank",)),
+    "^GSPC": ("market_context", ("ctx_ret_1d_sp500",)),
+    "^IXIC": ("market_context", ("ctx_ret_1d_nasdaq",)),
+    "^DJI": ("market_context", ("ctx_ret_1d_dow_jones",)),
+    "BZ=F": ("market_context", ("ctx_ret_1d_brent_crude",)),
+    "CL=F": ("market_context", ("ctx_ret_1d_wti_crude",)),
+    "GC=F": ("market_context", ("ctx_ret_1d_gold",)),
+    "DX-Y.NYB": ("market_context", ("ctx_ret_1d_dxy",)),
+    "^N225": ("market_context", ("ctx_ret_1d_nikkei_225",)),
+    "^HSI": ("market_context", ("ctx_ret_1d_hang_seng",)),
+    "^FTSE": ("market_context", ("ctx_ret_1d_ftse_100",)),
+    "^INDIAVIX": ("market_context", ("ctx_diff_1d_india_vix", "ctx_level_india_vix")),
+    "^VIX": ("market_context", ("ctx_diff_1d_us_vix", "ctx_level_us_vix")),
+    "IN10YT=RR": ("market_context", ("ctx_diff_1d_india_10y_yield",)),
+    "^TNX": ("market_context", ("ctx_diff_1d_us_10y_yield",)),
+    "INR=X": ("market_context", ("ctx_diff_1d_usd_inr",)),
+}
 
 CANONICAL_FEATURES_63: tuple[str, ...] = CANONICAL_PRICE_FEATURES_45 + CANONICAL_CONTEXT_FEATURES_18
 
@@ -69,6 +93,24 @@ class LedgerStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class OperatorAttestation:
+    operator_id: str
+    key_id: str
+    signature: str
+    signed_timestamp: datetime
+    public_key: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "operator_id": self.operator_id,
+            "key_id": self.key_id,
+            "signature": self.signature,
+            "signed_timestamp": self.signed_timestamp.isoformat(),
+            "public_key": self.public_key,
+        }
+
+
+@dataclass(frozen=True)
 class InstrumentSourceRecord:
     source_id: str
     instrument_symbol: str
@@ -81,6 +123,7 @@ class InstrumentSourceRecord:
     raw_payload_hash: str = ""
     provenance_type: ProvenanceType = ProvenanceType.PROSPECTIVE_LIVE_CAPTURE
     staleness_seconds: float = 0.0
+    raw_payload_ref: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -95,6 +138,7 @@ class InstrumentSourceRecord:
             "raw_payload_hash": self.raw_payload_hash,
             "provenance_type": self.provenance_type.value,
             "staleness_seconds": self.staleness_seconds,
+            "raw_payload_ref": self.raw_payload_ref,
         }
 
 
@@ -109,6 +153,7 @@ class SourceProvenance:
     provenance_type: ProvenanceType = ProvenanceType.PROSPECTIVE_LIVE_CAPTURE
     quarantine_reason: Optional[str] = None
     source_manifest: List[InstrumentSourceRecord] = field(default_factory=list)
+    attestation: Optional[OperatorAttestation] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -121,6 +166,7 @@ class SourceProvenance:
             "provenance_type": self.provenance_type.value,
             "quarantine_reason": self.quarantine_reason,
             "source_manifest": [s.to_dict() for s in self.source_manifest],
+            "attestation": self.attestation.to_dict() if self.attestation else None,
         }
 
 

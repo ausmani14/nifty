@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 from nifty_ai.config import PROJECT_ROOT
 from nifty_ai.shadow.contracts import LedgerStatus, ProvenanceType
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import build_canonical_source_manifest, build_synthetic_feature_vector
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 from nifty_ai.shadow.ledger import ShadowPredictionLedger
 from nifty_ai.shadow.live_data import CaptureStatus, attempt_live_feature_capture, is_nse_trading_day
@@ -188,16 +188,43 @@ def run_dry_run() -> int:
         # 1. Verify frozen model
         assert_frozen_model_intact()
 
-        # 2. Build synthetic vector
+        # 2. Build attested vector for isolated simulation
         test_date = "2026-11-02"
         simulated_eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-        vec = build_synthetic_feature_vector(
+        obs_t = datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE)
+        avail_t = datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE)
+        cutoff_t = datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE)
+
+        from nifty_ai.shadow.crypto import generate_operator_keypair, create_operator_attestation
+        from dataclasses import replace
+        priv_key, pub_key = generate_operator_keypair()
+
+        manifest = build_canonical_source_manifest(
             session_date=test_date,
             provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
-            observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
-            availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
-            cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+            source_id="operator_verified_feed",
+            observation_time=obs_t,
+            availability_time=avail_t,
         )
+        vec_unsigned = build_synthetic_feature_vector(
+            session_date=test_date,
+            provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+            observation_time=obs_t,
+            availability_time=avail_t,
+            cutoff_time=cutoff_t,
+            source_id="operator_verified_feed",
+            source_manifest=manifest,
+        )
+        att = create_operator_attestation(
+            feature_vector=vec_unsigned,
+            operator_id="operator_dry_run",
+            key_id="ed25519_dry_run_01",
+            private_key_hex=priv_key,
+            signed_timestamp=datetime(2026, 11, 2, 8, 49, 0, tzinfo=MARKET_TIMEZONE),
+        )
+        signed_prov = replace(vec_unsigned.provenance, attestation=att)
+        vec = replace(vec_unsigned, provenance=signed_prov)
+
         validator = SnapshotBInputValidator()
         rep = validator.validate(vec, current_time=simulated_eval_time)
 
