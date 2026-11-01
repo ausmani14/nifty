@@ -31,10 +31,38 @@ def test_valid_synthetic_feature_vector_passes():
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
     assert report.status == ValidationStatus.PASSED
     assert report.is_eligible_for_inference is True
     assert len(report.failed_checks) == 0
+
+
+def test_validator_rejects_future_session_date_without_current_time():
+    validator = SnapshotBInputValidator()
+    # Future session date evaluated at real clock time
+    vec = build_synthetic_feature_vector(
+        session_date="2026-11-02",
+        observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    report = validator.validate(vec)  # current_time is None
+    assert report.status == ValidationStatus.FAILED
+    assert "FUTURE_SESSION_DATE" in report.failed_checks
+    assert report.is_eligible_for_inference is False
+
+
+def test_validator_rejects_naive_current_time():
+    validator = SnapshotBInputValidator()
+    vec = build_synthetic_feature_vector(
+        session_date="2026-11-02",
+        cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+    )
+    naive_eval = datetime(2026, 11, 2, 8, 52, 0)
+    with pytest.raises(ValueError, match="current_time must be timezone-aware"):
+        validator.validate(vec, current_time=naive_eval)
 
 
 def test_cutoff_exceeded_fails():

@@ -37,7 +37,8 @@ def test_inference_runner_initialization_and_prediction():
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
     assert report.is_eligible_for_inference is True
 
     pred = runner.predict(vec, report, prev_record_hash="0" * 64)
@@ -85,7 +86,8 @@ def test_deterministic_prediction_reproducibility():
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
 
     pred1 = runner.predict(vec, report, prev_record_hash="0" * 64)
     pred2 = runner.predict(vec, report, prev_record_hash="0" * 64)

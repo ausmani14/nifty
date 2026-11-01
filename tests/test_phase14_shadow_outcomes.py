@@ -68,16 +68,17 @@ def test_end_to_end_reconciliation_and_metrics(isolated_shadow_system):
             session_date=s_date,
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )
-        report = validator.validate(vec)
+        acq_date = datetime.strptime(s_date, "%Y-%m-%d").date()
+        eval_time = datetime.combine(acq_date, time(8, 52, 0), tzinfo=MARKET_TIMEZONE)
+        report = validator.validate(vec, current_time=eval_time)
         assert report.is_eligible_for_inference is True
 
-        # 2. Pre-market prediction at 08:50 IST
+        # 2. Pre-market prediction at 08:52 IST
         pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
         status, _ = ledger.append_prediction(pred)
         assert status == LedgerStatus.RECORDED
 
         # 3. Post-market outcome reconciliation at 16:00 IST
-        acq_date = datetime.strptime(s_date, "%Y-%m-%d").date()
         outcome = reconciler.reconcile_session(
             session_date=s_date,
             open_price=mock_opens[idx],
@@ -102,16 +103,29 @@ def test_end_to_end_reconciliation_and_metrics(isolated_shadow_system):
 
 def test_prospective_filtering_excludes_quarantined_fixtures(isolated_shadow_system):
     ledger, reconciler = isolated_shadow_system
-    runner = ShadowInferenceRunner()
-    validator = SnapshotBInputValidator()
+    from nifty_ai.shadow.contracts import ShadowPrediction
 
-    # Create a quarantined/backfill prediction
-    vec = build_synthetic_feature_vector(
+    # Create a quarantined fixture prediction directly on isolated test ledger
+    pred = ShadowPrediction(
+        prediction_id="pred_2026-11-02_0850",
         session_date="2026-11-02",
-        provenance_type=ProvenanceType.INVALID_OR_QUARANTINED,
+        target_date="2026-11-02",
+        prediction_timestamp=datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE),
+        snapshot_type="SNAPSHOT_0850",
+        cutoff_timestamp=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        target_id="T0",
+        predicted_return=0.001,
+        predicted_return_bps=10.0,
+        model_name="test_model",
+        model_sha256="test_sha",
+        feature_hash="hash",
+        feature_count=63,
+        provenance_type=ProvenanceType.INVALID_OR_QUARANTINED.value,
+        research_status="RESEARCH_BASELINE_ONLY",
+        trading_authorized=False,
+        prev_record_hash=ledger.get_tip_hash(),
+        record_hash="a" * 64,
     )
-    report = validator.validate(vec)
-    pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
     ledger.append_prediction(pred)
 
     reconciler.reconcile_session(

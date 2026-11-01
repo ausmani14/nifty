@@ -1,6 +1,6 @@
 """Tests for Phase 14 Step 4: Immutable Prospective Prediction Ledger."""
 
-from datetime import datetime
+from datetime import datetime, time
 import json
 from pathlib import Path
 import pytest
@@ -38,7 +38,8 @@ def test_append_single_prediction_and_chaining(temp_ledger: ShadowPredictionLedg
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
     pred1 = runner.predict(vec, report, prev_record_hash=temp_ledger.get_tip_hash())
 
     status, rec = temp_ledger.append_prediction(pred1)
@@ -62,7 +63,8 @@ def test_duplicate_prediction_idempotency(temp_ledger: ShadowPredictionLedger):
         cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
     )
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
     pred1 = runner.predict(vec, report, prev_record_hash=temp_ledger.get_tip_hash())
 
     status1, _ = temp_ledger.append_prediction(pred1)
@@ -85,7 +87,9 @@ def test_chain_verification_detects_tampering(temp_ledger: ShadowPredictionLedge
             session_date=s_date,
             provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
         )
-        report = validator.validate(vec)
+        s_dt = datetime.strptime(s_date, "%Y-%m-%d").date()
+        eval_time = datetime.combine(s_dt, time(8, 52, 0), tzinfo=MARKET_TIMEZONE)
+        report = validator.validate(vec, current_time=eval_time)
         pred = runner.predict(vec, report, prev_record_hash=temp_ledger.get_tip_hash())
         temp_ledger.append_prediction(pred)
 

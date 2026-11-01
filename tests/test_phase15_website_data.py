@@ -1,8 +1,12 @@
 """Tests for Phase 15 Website Data Exporter and Static Contracts."""
 
+from datetime import datetime
 import json
 from pathlib import Path
 import pytest
+from zoneinfo import ZoneInfo
+
+MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 from nifty_ai.shadow.contracts import (
     CANONICAL_MODEL_SHA256,
@@ -68,9 +72,10 @@ def test_populated_ledger_website_exports(isolated_exporter):
     # 1. Add mock prediction
     vec = build_synthetic_feature_vector(
         session_date="2026-11-02",
-        provenance_type=ProvenanceType.INVALID_OR_QUARANTINED,
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
     )
-    rep = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
     pred = runner.predict(vec, rep, prev_record_hash=pred_ledger.get_tip_hash())
     pred_ledger.append_prediction(pred)
 

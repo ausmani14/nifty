@@ -14,6 +14,8 @@ from nifty_ai.shadow.contracts import (
     CANONICAL_FEATURES_63,
     CANONICAL_META_SHA256,
     CANONICAL_MODEL_SHA256,
+    FeatureVector,
+    InstrumentSourceRecord,
     LedgerStatus,
     ProvenanceType,
     ValidationStatus,
@@ -812,3 +814,237 @@ def test_timing_boundary_condition_14_delayed_execution_past_0915_missed_cutoff(
     res = attempt_live_feature_capture("2026-11-02", current_time=eval_time)
     assert res.status == CaptureStatus.MISSED_CUTOFF
     assert "at or after 09:15:00 IST" in res.reason
+
+
+# ---------------------------------------------------------------------------
+# Section 1 & 2 & 3: Synthetic Time Fix, Inference Boundary Hardening & Source Manifest
+# ---------------------------------------------------------------------------
+
+def test_validator_never_synthesizes_future_evaluation_time():
+    """Section 1: Validator evaluates with real UTC clock when current_time is None, rejecting future sessions."""
+    validator = SnapshotBInputValidator()
+    # A session date in 2029 (definitely in the future relative to real clock)
+    future_date = "2029-11-02"
+    vec = build_synthetic_feature_vector(
+        future_date,
+        cutoff_time=datetime(2029, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        observation_time=datetime(2029, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+        availability_time=datetime(2029, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    )
+    rep = validator.validate(vec)  # current_time is None!
+    assert rep.status == ValidationStatus.FAILED
+    assert "FUTURE_SESSION_DATE" in rep.failed_checks
+    assert rep.is_eligible_for_inference is False
+
+
+def test_validator_rejects_naive_current_time_param():
+    """Section 1: Naive current_time is explicitly rejected with ValueError."""
+    validator = SnapshotBInputValidator()
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    naive_dt = datetime(2026, 11, 2, 8, 52, 0)  # No tzinfo
+    with pytest.raises(ValueError, match="current_time must be timezone-aware"):
+        validator.validate(vec, current_time=naive_dt)
+
+
+def test_inference_runner_rejects_unpassed_validation_status():
+    """Section 2: Inference runner rejects report if status is not PASSED."""
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    report = validator.validate(vec, current_time=eval_time)
+    assert report.status == ValidationStatus.PASSED
+
+    # Corrupt report status
+    report.status = ValidationStatus.FAILED
+    with pytest.raises(ValueError, match="Validation report status is 'ValidationStatus.FAILED', expected PASSED"):
+        runner.predict(vec, report)
+
+
+def test_inference_runner_rejects_session_date_mismatch():
+    """Section 2: Inference runner rejects mismatch between report and vector session date."""
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    report = validator.validate(vec, current_time=eval_time)
+
+    # Mismatched session date
+    report.session_date = "2026-11-03"
+    with pytest.raises(ValueError, match="does not match feature vector session date"):
+        runner.predict(vec, report)
+
+
+def test_inference_runner_rejects_unbound_validation_report():
+    """Section 2: Inference runner rejects validation report not bound to the vector hash."""
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    report = validator.validate(vec, current_time=eval_time)
+
+    # Tamper with report's bound vector hash
+    report.feature_vector_hash = "0" * 64
+    with pytest.raises(ValueError, match="Validation report is not bound to supplied feature vector"):
+        runner.predict(vec, report)
+
+
+def test_inference_runner_rejects_tampered_feature_values():
+    """Section 2: Inference runner catches when feature values do not match declared feature_hash."""
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    report = validator.validate(vec, current_time=eval_time)
+
+    # Construct new vector with tampered feature values keeping same hash
+    tampered_vals = list(vec.feature_values)
+    tampered_vals[0] = 0.9999
+    tampered_vec = FeatureVector(
+        session_date=vec.session_date,
+        cutoff_time=vec.cutoff_time,
+        feature_names=vec.feature_names,
+        feature_values=tampered_vals,
+        feature_hash=vec.feature_hash,
+        provenance=vec.provenance,
+    )
+    with pytest.raises(ValueError, match="Feature vector hash mismatch"):
+        runner.predict(tampered_vec, report)
+
+
+def test_inference_runner_rejects_non_prospective_provenance():
+    """Section 2: Inference runner rejects historical or quarantined provenance types."""
+    runner = ShadowInferenceRunner()
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.HISTORICAL_BACKFILL,
+    )
+    report = validator.validate(vec, current_time=eval_time, allow_historical_research=True)
+    report.is_eligible_for_inference = True
+    report.status = ValidationStatus.PASSED
+
+    with pytest.raises(ValueError, match="Non-prospective provenance"):
+        runner.predict(vec, report)
+
+
+def test_source_manifest_covers_all_63_features():
+    """Section 3: Canonical source manifest must cleanly cover all 63 canonical features."""
+    from nifty_ai.shadow.input_capture import build_canonical_source_manifest
+    manifest = build_canonical_source_manifest("2026-11-02")
+    covered = set()
+    for src in manifest:
+        covered.update(src.feature_names)
+    assert covered == set(CANONICAL_FEATURES_63)
+    assert len(covered) == 63
+
+
+def test_source_manifest_rejects_post_cutoff_source():
+    """Section 3: A single source with observation or availability after cutoff fails validation."""
+    from nifty_ai.shadow.input_capture import build_canonical_source_manifest
+    manifest = build_canonical_source_manifest("2026-11-02")
+    # Taint one market-context source with 08:55 IST observation
+    tainted_manifest = []
+    for s in manifest:
+        if s.instrument_symbol == "^GSPC":
+            tainted_s = InstrumentSourceRecord(
+                source_id=s.source_id,
+                instrument_symbol=s.instrument_symbol,
+                feature_family=s.feature_family,
+                feature_names=s.feature_names,
+                observation_time=datetime(2026, 11, 2, 8, 55, 0, tzinfo=MARKET_TIMEZONE),
+                availability_time=datetime(2026, 11, 2, 8, 56, 0, tzinfo=MARKET_TIMEZONE),
+                ingestion_time=s.ingestion_time,
+                timezone=s.timezone,
+                raw_payload_hash=s.raw_payload_hash,
+                provenance_type=s.provenance_type,
+            )
+            tainted_manifest.append(tainted_s)
+        else:
+            tainted_manifest.append(s)
+
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        source_manifest=tainted_manifest,
+    )
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
+    assert any("observation time" in err and "is after cutoff" in err for err in rep.error_messages)
+
+
+def test_source_manifest_rejects_excessively_stale_source():
+    """Section 3: A single source older than 7 calendar days fails validation."""
+    from nifty_ai.shadow.input_capture import build_canonical_source_manifest
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted_manifest = []
+    for s in manifest:
+        if s.instrument_symbol == "CL=F":
+            tainted_s = InstrumentSourceRecord(
+                source_id=s.source_id,
+                instrument_symbol=s.instrument_symbol,
+                feature_family=s.feature_family,
+                feature_names=s.feature_names,
+                observation_time=datetime(2026, 10, 20, 8, 0, 0, tzinfo=MARKET_TIMEZONE),  # 13 days stale
+                availability_time=datetime(2026, 10, 20, 8, 5, 0, tzinfo=MARKET_TIMEZONE),
+                ingestion_time=s.ingestion_time,
+                timezone=s.timezone,
+                raw_payload_hash=s.raw_payload_hash,
+                provenance_type=s.provenance_type,
+            )
+            tainted_manifest.append(tainted_s)
+        else:
+            tainted_manifest.append(s)
+
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        source_manifest=tainted_manifest,
+    )
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
+    assert any("exceeds maximum permitted" in err for err in rep.error_messages)
+
+
+def test_source_manifest_rejects_pre_activation_source():
+    """Section 3: A single prospective source observed before activation boundary fails validation."""
+    from nifty_ai.shadow.input_capture import build_canonical_source_manifest
+    manifest = build_canonical_source_manifest("2026-11-02")
+    tainted_manifest = []
+    for s in manifest:
+        if s.instrument_symbol == "^NSEI":
+            tainted_s = InstrumentSourceRecord(
+                source_id=s.source_id,
+                instrument_symbol=s.instrument_symbol,
+                feature_family=s.feature_family,
+                feature_names=s.feature_names,
+                observation_time=datetime(2026, 10, 31, 10, 0, 0, tzinfo=timezone.utc),  # Before activation boundary
+                availability_time=datetime(2026, 10, 31, 10, 5, 0, tzinfo=timezone.utc),
+                ingestion_time=s.ingestion_time,
+                timezone=s.timezone,
+                raw_payload_hash=s.raw_payload_hash,
+                provenance_type=s.provenance_type,
+            )
+            tainted_manifest.append(tainted_s)
+        else:
+            tainted_manifest.append(s)
+
+    vec = build_synthetic_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        source_manifest=tainted_manifest,
+    )
+    validator = SnapshotBInputValidator()
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert "SOURCE_PROVENANCE_MANIFEST" in rep.failed_checks
+    assert any("precedes system activation boundary" in err for err in rep.error_messages)

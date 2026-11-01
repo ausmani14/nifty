@@ -190,9 +190,16 @@ def run_dry_run() -> int:
 
         # 2. Build synthetic vector
         test_date = "2026-11-02"
-        vec = build_synthetic_feature_vector(session_date=test_date, provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
+        simulated_eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+        vec = build_synthetic_feature_vector(
+            session_date=test_date,
+            provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+            observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
+            availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
+            cutoff_time=datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
+        )
         validator = SnapshotBInputValidator()
-        rep = validator.validate(vec)
+        rep = validator.validate(vec, current_time=simulated_eval_time)
 
         # 3. Predict & Append to temp ledger
         runner = ShadowInferenceRunner()

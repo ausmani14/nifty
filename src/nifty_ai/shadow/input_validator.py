@@ -46,20 +46,18 @@ class SnapshotBInputValidator:
         self,
         feature_vector: FeatureVector,
         current_time: Optional[datetime] = None,
+        allow_historical_research: bool = False,
     ) -> ValidationReport:
         """Execute strict fail-closed validation of a Snapshot B feature vector."""
         if current_time is not None:
+            if not isinstance(current_time, datetime):
+                raise ValueError(f"current_time must be a datetime, got {type(current_time)}")
+            if current_time.tzinfo is None:
+                raise ValueError("current_time must be timezone-aware. Naive datetime is strictly prohibited.")
             now_dt = current_time.astimezone(timezone.utc)
         else:
-            try:
-                target_dt = datetime.strptime(feature_vector.session_date, "%Y-%m-%d").date()
-                today_ist = datetime.now(timezone.utc).astimezone(MARKET_TIMEZONE).date()
-                if target_dt > today_ist:
-                    now_dt = datetime.combine(target_dt, SNAPSHOT_B_CUTOFF_TIME, tzinfo=MARKET_TIMEZONE).astimezone(timezone.utc)
-                else:
-                    now_dt = datetime.now(timezone.utc)
-            except Exception:
-                now_dt = datetime.now(timezone.utc)
+            now_dt = datetime.now(timezone.utc)
+
         report = ValidationReport(
             validation_id=f"val_{feature_vector.session_date}_{now_dt.strftime('%Y%m%d_%H%M%S')}",
             session_date=feature_vector.session_date,
@@ -69,6 +67,7 @@ class SnapshotBInputValidator:
             failed_checks=[],
             error_messages=[],
             is_eligible_for_inference=False,
+            feature_vector_hash=feature_vector.feature_hash,
         )
 
         # 1. Feature count & canonical ordering check
@@ -184,6 +183,28 @@ class SnapshotBInputValidator:
 
         # Invariant: Evaluation time must be AT OR AFTER cutoff (Issue 1)
         eval_ist = now_dt.astimezone(MARKET_TIMEZONE)
+        eval_date = eval_ist.date()
+
+        # Invariant: Reject future session dates relative to effective evaluation date
+        if target_session_dt > eval_date:
+            report.failed_checks.append("FUTURE_SESSION_DATE")
+            report.error_messages.append(
+                f"Target session date '{target_session_dt}' is in the future relative to effective evaluation date '{eval_date}'. "
+                f"Prospective Snapshot B predictions cannot be evaluated in advance."
+            )
+        else:
+            report.passed_checks.append("FUTURE_SESSION_DATE")
+
+        # Invariant: Reject past session dates relative to effective evaluation date (unless explicitly authorized for research)
+        if target_session_dt < eval_date and not allow_historical_research:
+            report.failed_checks.append("PAST_SESSION_DATE")
+            report.error_messages.append(
+                f"Target session date '{target_session_dt}' is in the past relative to effective evaluation date '{eval_date}'. "
+                f"Backdating prospective predictions is strictly prohibited."
+            )
+        else:
+            report.passed_checks.append("PAST_SESSION_DATE")
+
         if eval_ist < expected_cutoff:
             report.failed_checks.append("EVALUATION_AFTER_CUTOFF")
             report.error_messages.append(
@@ -288,6 +309,87 @@ class SnapshotBInputValidator:
             )
         else:
             report.passed_checks.append("FEATURE_HASH_INTEGRITY")
+
+        # 8. Source-Level Provenance Manifest Validation
+        if prov and getattr(prov, "source_manifest", None):
+            manifest_errors = []
+            covered_features = set()
+
+            for src in prov.source_manifest:
+                covered_features.update(src.feature_names)
+
+                # Timezone awareness
+                if src.observation_time is None or src.observation_time.tzinfo is None:
+                    manifest_errors.append(f"Source {src.instrument_symbol}: observation_time lacks timezone awareness.")
+                if src.availability_time is None or src.availability_time.tzinfo is None:
+                    manifest_errors.append(f"Source {src.instrument_symbol}: availability_time lacks timezone awareness.")
+                if src.ingestion_time is None or src.ingestion_time.tzinfo is None:
+                    manifest_errors.append(f"Source {src.instrument_symbol}: ingestion_time lacks timezone awareness.")
+
+                if manifest_errors:
+                    continue
+
+                src_obs_utc = src.observation_time.astimezone(timezone.utc)
+                src_avail_utc = src.availability_time.astimezone(timezone.utc)
+                cutoff_utc = expected_cutoff.astimezone(timezone.utc)
+
+                # 1. 08:50 IST information cutoff
+                if src_obs_utc > cutoff_utc:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: observation time {src_obs_utc.isoformat()} is after cutoff {cutoff_utc.isoformat()}."
+                    )
+                if src_avail_utc > cutoff_utc:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: availability time {src_avail_utc.isoformat()} is after cutoff {cutoff_utc.isoformat()}."
+                    )
+
+                # 2. Actual inference evaluation time
+                if src_avail_utc > now_dt:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: availability time {src_avail_utc.isoformat()} is in future relative to evaluation time {now_dt.isoformat()}."
+                    )
+                if src_obs_utc > now_dt:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: observation time {src_obs_utc.isoformat()} is in future relative to evaluation time {now_dt.isoformat()}."
+                    )
+
+                # 3. Maximum permitted staleness (7 calendar days = 604,800 seconds)
+                MAX_PERMITTED_STALENESS = 7 * 86400.0
+                src_staleness = (cutoff_utc - src_obs_utc).total_seconds()
+                if src_staleness > MAX_PERMITTED_STALENESS:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: staleness {src_staleness:.0f}s exceeds maximum permitted {MAX_PERMITTED_STALENESS:.0f}s."
+                    )
+                if src_staleness < 0:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: negative staleness (observation in future relative to cutoff)."
+                    )
+
+                # 4. System activation boundary
+                if src.provenance_type in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}:
+                    if src_obs_utc < self.activation_boundary_utc or src_avail_utc < self.activation_boundary_utc:
+                        manifest_errors.append(
+                            f"Source {src.instrument_symbol}: timestamp precedes system activation boundary {self.activation_boundary_utc.isoformat()}."
+                        )
+
+                # 5. Provenance classification
+                if src.provenance_type not in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: non-prospective provenance '{src.provenance_type.value}'."
+                    )
+
+            # Check coverage of canonical 63 features
+            missing_manifest_features = set(CANONICAL_FEATURES_63) - covered_features
+            if missing_manifest_features:
+                manifest_errors.append(
+                    f"Source manifest incomplete: {len(missing_manifest_features)} features lack source provenance."
+                )
+
+            if manifest_errors:
+                report.failed_checks.append("SOURCE_PROVENANCE_MANIFEST")
+                report.error_messages.extend(manifest_errors)
+            else:
+                report.passed_checks.append("SOURCE_PROVENANCE_MANIFEST")
 
         # Final determination
         if report.failed_checks:

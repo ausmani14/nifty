@@ -134,9 +134,10 @@ def test_group_a_detects_wrong_tree_count(tmp_path: Path):
 def test_group_a_inference_defense_in_depth_rejects_malformed_features():
     """Inference runner directly rejects bad feature lists without trusting caller."""
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
     validator = SnapshotBInputValidator()
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
 
     # Missing feature (62 instead of 63)
     bad_vec = FeatureVector(
@@ -172,8 +173,9 @@ def test_group_a_inference_defense_in_depth_rejects_malformed_features():
 def test_group_b_valid_pit_timestamp_passes():
     """Valid observation timestamp prior to 08:50 IST passes."""
     validator = SnapshotBInputValidator()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
-    report = validator.validate(vec)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
     assert report.status == ValidationStatus.PASSED
     assert report.is_eligible_for_inference is True
 
@@ -264,9 +266,10 @@ def test_group_c_ledger_append_idempotency_and_chaining(tmp_path: Path):
     assert ledger.get_tip_hash() == "0" * 64
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
     validator = SnapshotBInputValidator()
-    report = validator.validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = validator.validate(vec, current_time=eval_time)
 
     pred1 = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
     status, rec1 = ledger.append_prediction(pred1)
@@ -288,8 +291,9 @@ def test_group_c_ledger_detects_tampering(tmp_path: Path):
     ledger_file = tmp_path / "test_ledger.jsonl"
     ledger = ShadowPredictionLedger(ledger_path=ledger_file)
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
-    report = SnapshotBInputValidator().validate(vec)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
     ledger.append_prediction(pred)
 
@@ -315,8 +319,9 @@ def test_group_d_reconciliation_lifecycle(tmp_path: Path):
     reconciler = ShadowOutcomeReconciler(prediction_ledger=ledger, outcomes_path=out_file)
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
-    report = SnapshotBInputValidator().validate(vec)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     pred = runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash())
     ledger.append_prediction(pred)
 
@@ -362,8 +367,9 @@ def test_group_d_reconciler_rejects_invalid_prices(tmp_path: Path):
     reconciler = ShadowOutcomeReconciler(prediction_ledger=ledger, outcomes_path=out_file)
 
     runner = ShadowInferenceRunner()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
-    report = SnapshotBInputValidator().validate(vec)
+    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     ledger.append_prediction(runner.predict(vec, report, prev_record_hash=ledger.get_tip_hash()))
 
     valid_time = datetime(2026, 11, 2, 16, 0, 0, tzinfo=MARKET_TIMEZONE)
@@ -458,8 +464,9 @@ def test_group_g_isolated_end_to_end_preserves_real_ledger():
         t_exporter = WebsiteDataExporter(output_dir=web_p, mirror_dir=mir_p, prediction_ledger=t_ledger, outcome_reconciler=t_reconciler)
 
         # 1. Prediction
-        vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.INVALID_OR_QUARANTINED)
-        rep = SnapshotBInputValidator().validate(vec)
+        vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE)
+        eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+        rep = SnapshotBInputValidator().validate(vec, current_time=eval_time)
         pred = ShadowInferenceRunner().predict(vec, rep, prev_record_hash=t_ledger.get_tip_hash())
         t_ledger.append_prediction(pred)
 
@@ -510,7 +517,8 @@ def test_rejects_pre_cutoff_observation_substituting_for_0850():
         cutoff_time=early_cutoff,
         provenance_type=ProvenanceType.INVALID_OR_QUARANTINED,
     )
-    report = SnapshotBInputValidator().validate(vec)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    report = SnapshotBInputValidator().validate(vec, current_time=eval_time)
     assert report.status == ValidationStatus.FAILED
     assert "CUTOFF_TIME_ENFORCEMENT" in report.failed_checks
     assert any("Pre-cutoff observations cannot substitute" in err for err in report.error_messages)

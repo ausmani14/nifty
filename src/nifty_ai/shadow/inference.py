@@ -4,11 +4,12 @@ Enforces model cryptographic authentication, immutable feature alignment,
 full precision preservation, and fail-closed execution semantics.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 import numpy as np
 import xgboost as xgb
 
@@ -18,9 +19,18 @@ from nifty_ai.shadow.contracts import (
     CANONICAL_META_SHA256,
     CANONICAL_MODEL_SHA256,
     FeatureVector,
+    ProvenanceType,
     ShadowPrediction,
     ValidationReport,
+    ValidationStatus,
 )
+from nifty_ai.shadow.input_validator import (
+    PREMARKET_DEADLINE_TIME,
+    SNAPSHOT_B_CUTOFF_TIME,
+    compute_feature_vector_hash,
+)
+
+MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 DEFAULT_MODEL_PATH = (
     PROJECT_ROOT
@@ -111,13 +121,43 @@ class ShadowInferenceRunner:
         prev_record_hash: str = "0" * 64,
     ) -> ShadowPrediction:
         """Generate a single point-in-time Snapshot B prediction."""
+        # 1. Validation report eligibility and status
         if not validation_report.is_eligible_for_inference:
             raise ValueError(
                 f"Cannot generate prediction for session {feature_vector.session_date}: "
                 f"Validation failed with errors: {validation_report.error_messages}"
             )
+        if validation_report.status != ValidationStatus.PASSED:
+            raise ValueError(
+                f"Inference rejected: Validation report status is '{validation_report.status}', expected PASSED."
+            )
 
-        # Defense-in-depth architectural checks on feature vector
+        # 2. Session date match
+        if validation_report.session_date != feature_vector.session_date:
+            raise ValueError(
+                f"Inference rejected: Validation report session date '{validation_report.session_date}' "
+                f"does not match feature vector session date '{feature_vector.session_date}'."
+            )
+
+        # 3. Timezone awareness of evaluation timestamp
+        if validation_report.evaluated_at is None or validation_report.evaluated_at.tzinfo is None:
+            raise ValueError("Inference rejected: Validation report evaluated_at timestamp lacks timezone awareness.")
+
+        # 4. Evaluation window verification ([08:50:00, 09:15:00) IST)
+        target_session_dt = datetime.strptime(feature_vector.session_date, "%Y-%m-%d").date()
+        expected_cutoff = datetime.combine(target_session_dt, SNAPSHOT_B_CUTOFF_TIME, tzinfo=MARKET_TIMEZONE)
+        premarket_deadline = datetime.combine(target_session_dt, PREMARKET_DEADLINE_TIME, tzinfo=MARKET_TIMEZONE)
+        eval_ist = validation_report.evaluated_at.astimezone(MARKET_TIMEZONE)
+        if eval_ist < expected_cutoff:
+            raise ValueError(
+                f"Inference rejected: Evaluation time {eval_ist.strftime('%H:%M:%S IST')} is prior to 08:50:00 IST information cutoff."
+            )
+        if eval_ist >= premarket_deadline:
+            raise ValueError(
+                f"Inference rejected: Evaluation time {eval_ist.strftime('%H:%M:%S IST')} is at or after 09:15:00 IST market open deadline."
+            )
+
+        # Defense-in-depth architectural checks on feature vector structure
         if len(feature_vector.feature_names) != 63:
             raise ValueError(f"Inference requires exactly 63 features, found {len(feature_vector.feature_names)}")
         if len(set(feature_vector.feature_names)) != 63:
@@ -126,6 +166,47 @@ class ShadowInferenceRunner:
             raise ValueError("Inference rejected: feature names or sequence do not match canonical 63 features.")
         if len(feature_vector.feature_values) != 63:
             raise ValueError(f"Inference requires exactly 63 feature values, found {len(feature_vector.feature_values)}")
+
+        # 5. Validation report vector binding
+        rep_hash = getattr(validation_report, "feature_vector_hash", "")
+        if rep_hash != feature_vector.feature_hash:
+            raise ValueError(
+                f"Inference rejected: Validation report is not bound to supplied feature vector. "
+                f"Report vector hash: '{rep_hash}', Vector hash: '{feature_vector.feature_hash}'."
+            )
+
+        # 6. Recomputed feature hash verification
+        recomputed_hash = compute_feature_vector_hash(feature_vector.feature_names, feature_vector.feature_values)
+        if feature_vector.feature_hash != recomputed_hash:
+            raise ValueError(
+                f"Inference rejected: Feature vector hash mismatch. "
+                f"Declared: '{feature_vector.feature_hash}', Recomputed: '{recomputed_hash}'."
+            )
+
+        # 7. Exact cutoff date and time
+        if feature_vector.cutoff_time is None or feature_vector.cutoff_time.tzinfo is None:
+            raise ValueError("Inference rejected: Feature vector cutoff_time lacks timezone awareness.")
+        cutoff_ist = feature_vector.cutoff_time.astimezone(MARKET_TIMEZONE)
+        if cutoff_ist.date() != target_session_dt:
+            raise ValueError(
+                f"Inference rejected: Cutoff calendar date '{cutoff_ist.date()}' does not match session date '{target_session_dt}'."
+            )
+        if cutoff_ist.time() != SNAPSHOT_B_CUTOFF_TIME:
+            raise ValueError(
+                f"Inference rejected: Cutoff time '{cutoff_ist.time()}' does not match mandatory 08:50:00 IST boundary."
+            )
+
+        # 8. Allowed prospective provenance
+        allowed_prospective = {
+            ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+            ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        }
+        if feature_vector.provenance is None or feature_vector.provenance.provenance_type not in allowed_prospective:
+            prov_str = str(feature_vector.provenance.provenance_type) if feature_vector.provenance else "None"
+            raise ValueError(
+                f"Inference rejected: Non-prospective provenance '{prov_str}'. "
+                f"Only {[p.value for p in allowed_prospective]} are authorized for inference."
+            )
 
         if self.model is None:
             raise RuntimeError("Model is not initialized.")

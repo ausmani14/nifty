@@ -69,6 +69,36 @@ class LedgerStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class InstrumentSourceRecord:
+    source_id: str
+    instrument_symbol: str
+    feature_family: str
+    feature_names: List[str]
+    observation_time: datetime
+    availability_time: datetime
+    ingestion_time: datetime
+    timezone: str = "Asia/Kolkata"
+    raw_payload_hash: str = ""
+    provenance_type: ProvenanceType = ProvenanceType.PROSPECTIVE_LIVE_CAPTURE
+    staleness_seconds: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "instrument_symbol": self.instrument_symbol,
+            "feature_family": self.feature_family,
+            "feature_names": list(self.feature_names),
+            "observation_time": self.observation_time.isoformat(),
+            "availability_time": self.availability_time.isoformat(),
+            "ingestion_time": self.ingestion_time.isoformat(),
+            "timezone": self.timezone,
+            "raw_payload_hash": self.raw_payload_hash,
+            "provenance_type": self.provenance_type.value,
+            "staleness_seconds": self.staleness_seconds,
+        }
+
+
+@dataclass(frozen=True)
 class SourceProvenance:
     source_id: str
     observation_time: datetime
@@ -78,6 +108,7 @@ class SourceProvenance:
     raw_data_hash: str = ""
     provenance_type: ProvenanceType = ProvenanceType.PROSPECTIVE_LIVE_CAPTURE
     quarantine_reason: Optional[str] = None
+    source_manifest: List[InstrumentSourceRecord] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -89,6 +120,7 @@ class SourceProvenance:
             "raw_data_hash": self.raw_data_hash,
             "provenance_type": self.provenance_type.value,
             "quarantine_reason": self.quarantine_reason,
+            "source_manifest": [s.to_dict() for s in self.source_manifest],
         }
 
 
@@ -122,6 +154,7 @@ class ValidationReport:
     failed_checks: List[str] = field(default_factory=list)
     error_messages: List[str] = field(default_factory=list)
     is_eligible_for_inference: bool = False
+    feature_vector_hash: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -133,6 +166,7 @@ class ValidationReport:
             "failed_checks": self.failed_checks,
             "error_messages": self.error_messages,
             "is_eligible_for_inference": self.is_eligible_for_inference,
+            "feature_vector_hash": self.feature_vector_hash,
         }
 
 
