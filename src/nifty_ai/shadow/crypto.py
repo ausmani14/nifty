@@ -66,10 +66,15 @@ def derive_public_key(private_key_hex: str) -> str:
 def compute_manifest_hash(source_manifest: List[Any]) -> str:
     """Compute deterministic SHA-256 hash across all security-relevant fields of source manifest records.
     
-    Uses canonical JSON serialization (RFC 8785) with sorted keys and compact separators:
-    source_id, instrument_symbol, feature_family, feature_names (sorted),
-    observation_time (ISO), availability_time (ISO), ingestion_time (ISO), timezone,
-    raw_payload_hash (lowercase hex), provenance_type, staleness_seconds, raw_payload_ref.
+    Deterministic Canonical JSON Profile (RFC 8785 subset):
+    1. Lexicographical Key Sorting: All dictionary keys are strictly sorted by Unicode code point (sort_keys=True).
+    2. Compact Representation: Separators are exactly (',', ':') with zero whitespace padding.
+    3. Deterministic Numbers: Floating-point staleness values are strictly rounded to 4 decimal places.
+    4. Strict Character Encoding: Formatted with ensure_ascii=True and encoded to bytes via UTF-8.
+    5. Deterministic Field Coverage: Includes source_id, instrument_symbol, feature_family,
+       sorted feature_names, ISO 8601 observation/availability/ingestion timestamps,
+       timezone string, lowercase 64-hex raw_payload_hash, provenance_type string,
+       staleness_seconds float, and normalized raw_payload_ref.
     """
     sorted_records = sorted(source_manifest, key=lambda s: (s.instrument_symbol, s.source_id))
     manifest_entries = []
@@ -182,19 +187,29 @@ class RawPayloadStore:
         sha256_hash = hashlib.sha256(payload_bytes).hexdigest().lower()
         safe_sym = instrument_symbol.replace("^", "").replace("=", "_").replace(".", "_")
 
-        target_dir = (self.base_dir / session_date).resolve()
-        # Path traversal guard
+        # Symlink guard on base_dir
+        if os.path.islink(self.base_dir):
+            raise ValueError(f"Symlinks are prohibited in payload store base directory: {self.base_dir}")
+
+        target_dir = self.base_dir / session_date
+        # Symlink and path traversal guard on target directory
+        if os.path.islink(target_dir):
+            raise ValueError(f"Symlinks are prohibited in payload store directory: {target_dir}")
         try:
-            target_dir.relative_to(self.base_dir)
+            target_dir.resolve().relative_to(self.base_dir)
         except ValueError:
             raise ValueError(f"Path traversal detected: {target_dir} escapes {self.base_dir}")
 
         target_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = (target_dir / f"{safe_sym}_{sha256_hash}.bin").resolve()
+        artifact_path = target_dir / f"{safe_sym}_{sha256_hash}.bin"
 
-        # Symlink guard
-        if artifact_path.is_symlink() or target_dir.is_symlink():
-            raise ValueError(f"Symlinks are prohibited in payload store: {artifact_path}")
+        # Symlink and containment guard on artifact path
+        if os.path.islink(artifact_path) or artifact_path.is_symlink():
+            raise ValueError(f"Symlinks are prohibited in payload store artifact: {artifact_path}")
+        try:
+            artifact_path.resolve().relative_to(self.base_dir)
+        except ValueError:
+            raise ValueError(f"Path traversal detected: {artifact_path} escapes {self.base_dir}")
 
         # Atomic exclusive write
         try:
@@ -215,27 +230,76 @@ class RawPayloadStore:
         if readback_hash != sha256_hash:
             raise IOError(f"Readback verification failed immediately after writing {artifact_path}")
 
-        # Return repository-relative path if inside PROJECT_ROOT
-        try:
-            rel_path = artifact_path.relative_to(PROJECT_ROOT.resolve())
-            return sha256_hash, str(rel_path.as_posix())
-        except ValueError:
-            return sha256_hash, str(artifact_path)
+        # Return relative path strictly within self.base_dir
+        rel_path = artifact_path.resolve().relative_to(self.base_dir)
+        return sha256_hash, str(rel_path.as_posix())
 
     def resolve_artifact_path(self, artifact_ref: str) -> Optional[Path]:
-        """Resolve an artifact reference to a verified, safe Path within base_dir or PROJECT_ROOT."""
-        if not artifact_ref or artifact_ref.startswith("payload_ref://"):
+        """Resolve an artifact reference strictly within self.base_dir.
+
+        Enforces:
+        - Rejects non-string, empty, or whitespace-only inputs.
+        - Rejects unsupported URI schemes (e.g. payload_ref://, file://, http://).
+        - Rejects absolute paths (leading slash, backslash, or Windows drive letter).
+        - Rejects path traversal components (..).
+        - Validates that no path component is a symlink BEFORE resolution.
+        - Verifies that resolved canonical path is strictly contained within self.base_dir.
+        - Requires the resolved target to be an existing regular file (not symlink/socket/etc).
+        """
+        if not artifact_ref or not isinstance(artifact_ref, str):
             return None
-        p = Path(artifact_ref)
-        if not p.is_absolute():
-            p = (PROJECT_ROOT / p).resolve()
-        else:
-            p = p.resolve()
-        if p.is_symlink():
+
+        clean_ref = artifact_ref.strip()
+        if not clean_ref:
             return None
-        if not p.exists() or not p.is_file():
+
+        # Reject unsupported schemes
+        if "://" in clean_ref or clean_ref.startswith(("payload_ref:", "file:", "http:", "https:")):
             return None
-        return p
+
+        # Reject absolute paths (POSIX / Windows drive letters or root slashes)
+        if clean_ref.startswith(("/", "\\")) or bool(re.match(r"^[a-zA-Z]:", clean_ref)):
+            return None
+        p_obj = Path(clean_ref)
+        if p_obj.is_absolute():
+            return None
+
+        # Reject path traversal
+        if ".." in p_obj.parts or "../" in clean_ref or "..\\" in clean_ref:
+            return None
+
+        # Normalize prefix if reference was stored relative to PROJECT_ROOT with standard prefix
+        # e.g., "data/shadow/raw_captures/2026-11-02/..." when base_dir is DEFAULT_RAW_CAPTURE_DIR
+        prefix_posix = "data/shadow/raw_captures/"
+        prefix_win = "data\\shadow\\raw_captures\\"
+        if clean_ref.startswith(prefix_posix) and self.base_dir == DEFAULT_RAW_CAPTURE_DIR.resolve():
+            clean_ref = clean_ref[len(prefix_posix):]
+            p_obj = Path(clean_ref)
+        elif clean_ref.startswith(prefix_win) and self.base_dir == DEFAULT_RAW_CAPTURE_DIR.resolve():
+            clean_ref = clean_ref[len(prefix_win):]
+            p_obj = Path(clean_ref)
+
+        # Inspect each path component for symlinks BEFORE resolution
+        current = self.base_dir
+        for part in p_obj.parts:
+            current = current / part
+            if os.path.islink(current):
+                return None
+
+        # Resolve path
+        resolved = current.resolve()
+
+        # Strict containment verification against base_dir
+        try:
+            resolved.relative_to(self.base_dir)
+        except ValueError:
+            return None
+
+        # Target must exist, be a regular file, and not be a symlink
+        if not resolved.exists() or os.path.islink(resolved) or resolved.is_symlink() or not resolved.is_file():
+            return None
+
+        return resolved
 
     def retrieve_payload(self, artifact_ref: str) -> Optional[bytes]:
         """Retrieve actual raw bytes from artifact reference."""

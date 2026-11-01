@@ -65,6 +65,39 @@ CANONICAL_CONTEXT_MAPPING: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 
 CANONICAL_FEATURES_63: tuple[str, ...] = CANONICAL_PRICE_FEATURES_45 + CANONICAL_CONTEXT_FEATURES_18
 
+# Canonical native timezone per required instrument (18 canonical instruments)
+CANONICAL_TIMEZONES: Dict[str, str] = {
+    "^NSEI": "Asia/Kolkata",
+    "CALENDAR": "Asia/Kolkata",
+    "^NSEBANK": "Asia/Kolkata",
+    "^INDIAVIX": "Asia/Kolkata",
+    "IN10YT=RR": "Asia/Kolkata",
+    "INR=X": "Asia/Kolkata",
+    "^GSPC": "America/New_York",
+    "^IXIC": "America/New_York",
+    "^DJI": "America/New_York",
+    "CL=F": "America/New_York",
+    "GC=F": "America/New_York",
+    "DX-Y.NYB": "America/New_York",
+    "^VIX": "America/New_York",
+    "^TNX": "America/New_York",
+    "BZ=F": "Europe/London",
+    "^FTSE": "Europe/London",
+    "^N225": "Asia/Tokyo",
+    "^HSI": "Asia/Hong_Kong",
+}
+
+# Explicit trusted live providers permitted for PROSPECTIVE_LIVE_CAPTURE
+TRUSTED_LIVE_PROVIDERS: set[str] = {
+    "nse_official_direct_feed",
+    "authorized_exchange_adapter",
+    "canonical_source_provider",
+    "production_market_feed",
+}
+
+# Evidence retention indicator when durable cloud storage is not attached
+EVIDENCE_RETENTION_BLOCKED: str = "EVIDENCE_RETENTION_BLOCKED"
+
 CANONICAL_MODEL_SHA256: str = "981bbc806160090e339093686c61b660368427860451d9720824720dd031c5df"
 CANONICAL_META_SHA256: str = "d64fee485721cc4e2596e8fd10039d9ea2a7e41ce84b90e19b6bd994ea5d7f33"
 

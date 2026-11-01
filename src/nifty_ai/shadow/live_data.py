@@ -16,9 +16,11 @@ from zoneinfo import ZoneInfo
 from nifty_ai.shadow.contracts import (
     ACTIVATION_BOUNDARY_UTC,
     CANONICAL_FEATURES_63,
+    CANONICAL_TIMEZONES,
     FeatureVector,
     ProvenanceType,
     SourceProvenance,
+    TRUSTED_LIVE_PROVIDERS,
 )
 from nifty_ai.shadow.input_validator import (
     PREMARKET_DEADLINE_TIME,
@@ -86,6 +88,8 @@ def attempt_live_feature_capture(
     session_date: str,
     input_file_path: Optional[Path] = None,
     current_time: Optional[datetime] = None,
+    payload_store: Optional[Any] = None,
+    operator_key_registry: Optional[Any] = None,
 ) -> DataCaptureResult:
     """Attempt point-in-time Snapshot B feature capture with strict calendar and cutoff gates."""
     now_ist = (current_time or datetime.now(timezone.utc)).astimezone(MARKET_TIMEZONE)
@@ -269,7 +273,7 @@ def attempt_live_feature_capture(
                     metadata={"source_file": str(input_file_path)},
                 )
 
-            # Invariant 8: Reject synthetic/test providers from prospective capture
+            # Invariant 8: Reject synthetic/test providers and require trusted provider identity for prospective live capture
             if any(sub in (vec.provenance.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
                 return DataCaptureResult(
                     status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
@@ -278,6 +282,19 @@ def attempt_live_feature_capture(
                     reason=f"Vector source_id '{vec.provenance.source_id}' is a synthetic/test identifier, rejected from prospective pipeline.",
                     metadata={"source_file": str(input_file_path)},
                 )
+
+            if vec.provenance.provenance_type == ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+                if vec.provenance.source_id not in TRUSTED_LIVE_PROVIDERS:
+                    return DataCaptureResult(
+                        status=CaptureStatus.DATA_SOURCE_BLOCKED,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Vector source_id '{vec.provenance.source_id}' is not an authorized trusted live provider for prospective capture. Trusted: {sorted(list(TRUSTED_LIVE_PROVIDERS))}.",
+                        metadata={"source_file": str(input_file_path)},
+                    )
+
+            from nifty_ai.shadow.crypto import RawPayloadStore
+            active_store = payload_store or RawPayloadStore()
 
             for src in vec.provenance.source_manifest:
                 if any(sub in (src.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
@@ -295,9 +312,7 @@ def attempt_live_feature_capture(
                         reason=f"Source {src.instrument_symbol}: raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash.",
                     )
                 if src.raw_payload_ref:
-                    from nifty_ai.shadow.crypto import RawPayloadStore
-                    store = RawPayloadStore()
-                    is_art_valid, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                    is_art_valid, art_err = active_store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
                     if not is_art_valid:
                         return DataCaptureResult(
                             status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
@@ -326,6 +341,34 @@ def attempt_live_feature_capture(
                         feature_vector=None,
                         reason=f"Source {src.instrument_symbol}: ingestion_time lacks timezone awareness.",
                     )
+
+                # Explicit timezone validation against CANONICAL_TIMEZONES (Issue 2)
+                if not getattr(src, "timezone", None) or not isinstance(src.timezone, str) or not src.timezone.strip():
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: missing explicit timezone.",
+                    )
+                clean_tz = src.timezone.strip()
+                try:
+                    ZoneInfo(clean_tz)
+                except Exception as e:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: invalid timezone '{clean_tz}': {e}",
+                    )
+                expected_tz = CANONICAL_TIMEZONES.get(src.instrument_symbol)
+                if expected_tz is not None and clean_tz != expected_tz:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: timezone '{clean_tz}' does not match canonical timezone '{expected_tz}'.",
+                    )
+
                 s_obs_utc = src.observation_time.astimezone(timezone.utc)
                 s_avail_utc = src.availability_time.astimezone(timezone.utc)
                 s_ingest_utc = src.ingestion_time.astimezone(timezone.utc)
@@ -352,6 +395,17 @@ def attempt_live_feature_capture(
                         feature_vector=None,
                         reason=f"Source {src.instrument_symbol} timestamp is in future relative to evaluation time {now_utc.isoformat()}.",
                     )
+
+                # Authoritative staleness check within 1.0s (Issue 3)
+                expected_staleness = (cutoff_utc - s_obs_utc).total_seconds()
+                if abs(src.staleness_seconds - expected_staleness) > 1.0:
+                    return DataCaptureResult(
+                        status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                        session_date=session_date,
+                        feature_vector=None,
+                        reason=f"Source {src.instrument_symbol}: declared staleness {src.staleness_seconds}s does not match authoritative staleness {expected_staleness}s within 1.0s tolerance.",
+                    )
+
                 if s_obs_utc < ACTIVATION_BOUNDARY_UTC or s_avail_utc < ACTIVATION_BOUNDARY_UTC or s_ingest_utc < ACTIVATION_BOUNDARY_UTC:
                     return DataCaptureResult(
                         status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
@@ -377,7 +431,12 @@ def attempt_live_feature_capture(
                         reason="Operator attestation is required for OPERATOR_ATTESTED_PROSPECTIVE. Self-declared input without cryptographic signature is rejected.",
                     )
                 from nifty_ai.shadow.crypto import verify_attestation
-                is_valid, sig_err = verify_attestation(vec, vec.provenance.attestation, evaluation_time=now_ist)
+                is_valid, sig_err = verify_attestation(
+                    vec,
+                    vec.provenance.attestation,
+                    registry=operator_key_registry,
+                    evaluation_time=now_ist,
+                )
                 if not is_valid:
                     return DataCaptureResult(
                         status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,

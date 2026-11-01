@@ -26,7 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 from nifty_ai.shadow.contracts import LedgerStatus, ProvenanceType
 from nifty_ai.shadow.inference import ShadowInferenceRunner
-from nifty_ai.shadow.input_capture import build_canonical_source_manifest, build_synthetic_feature_vector
+from nifty_ai.shadow.input_capture import build_synthetic_feature_vector
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator
 from nifty_ai.shadow.ledger import ShadowPredictionLedger
 from nifty_ai.shadow.live_data import CaptureStatus, attempt_live_feature_capture, is_nse_trading_day
@@ -236,20 +236,22 @@ def run_dry_run() -> int:
         from dataclasses import replace
         vec = replace(vec, provenance=replace(vec.provenance, attestation=att))
 
-        validator = SnapshotBInputValidator()
+        validator = SnapshotBInputValidator(payload_store=dry_run_store)
         rep = validator.validate(
             vec,
             current_time=simulated_eval_time,
             operator_key_registry=dry_run_registry,
+            payload_store=dry_run_store,
         )
 
         # 3. Predict & Append to temp ledger
-        runner = ShadowInferenceRunner()
+        runner = ShadowInferenceRunner(payload_store=dry_run_store)
         pred = runner.predict(
             vec,
             rep,
             prev_record_hash=tmp_ledger.get_tip_hash(),
             operator_key_registry=dry_run_registry,
+            payload_store=dry_run_store,
         )
         st, _ = tmp_ledger.append_prediction(pred)
         assert st == LedgerStatus.RECORDED

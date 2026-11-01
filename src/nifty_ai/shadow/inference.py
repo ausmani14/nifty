@@ -21,6 +21,7 @@ from nifty_ai.shadow.contracts import (
     FeatureVector,
     ProvenanceType,
     ShadowPrediction,
+    TRUSTED_LIVE_PROVIDERS,
     ValidationReport,
     ValidationStatus,
 )
@@ -103,9 +104,11 @@ class ShadowInferenceRunner:
         self,
         model_path: Path = DEFAULT_MODEL_PATH,
         meta_path: Path = DEFAULT_META_PATH,
+        payload_store: Optional[Any] = None,
     ):
         self.model_path = model_path
         self.meta_path = meta_path
+        self.payload_store = payload_store
         self.metadata = verify_frozen_model_artifacts(model_path, meta_path)
         self.model: Optional[xgb.XGBRegressor] = None
         self._load_model()
@@ -120,6 +123,7 @@ class ShadowInferenceRunner:
         validation_report: ValidationReport,
         prev_record_hash: str = "0" * 64,
         operator_key_registry: Optional[Any] = None,
+        payload_store: Optional[Any] = None,
     ) -> ShadowPrediction:
         """Generate a single point-in-time Snapshot B prediction."""
         # 1. Validation report eligibility and status
@@ -214,9 +218,15 @@ class ShadowInferenceRunner:
         if not getattr(prov, "source_manifest", None) or len(prov.source_manifest) == 0:
             raise ValueError("Inference rejected: Prospective prediction requires non-empty source_manifest.")
 
-        # Reject synthetic test providers
+        # Reject synthetic test providers and verify trusted live provider
         if any(sub in (prov.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
             raise ValueError(f"Inference rejected: Synthetic/test vector source_id '{prov.source_id}'.")
+        if prov.provenance_type == ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+            if prov.source_id not in TRUSTED_LIVE_PROVIDERS:
+                raise ValueError(
+                    f"Inference rejected: Provider '{prov.source_id}' is not an authorized trusted live provider for prospective capture."
+                )
+
         for src in prov.source_manifest:
             if any(sub in (src.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
                 raise ValueError(f"Inference rejected: Synthetic/test source provider '{src.source_id}'.")
@@ -224,10 +234,10 @@ class ShadowInferenceRunner:
                 raise ValueError(f"Inference rejected: Invalid raw_payload_hash for source {src.instrument_symbol}.")
 
         from nifty_ai.shadow.crypto import RawPayloadStore, compute_manifest_hash, verify_attestation
-        store = RawPayloadStore()
+        active_store = payload_store or self.payload_store or RawPayloadStore()
         for src in prov.source_manifest:
             if src.raw_payload_ref:
-                is_valid_art, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                is_valid_art, art_err = active_store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
                 if not is_valid_art:
                     raise ValueError(f"Inference rejected: Raw payload artifact verification failed for {src.instrument_symbol}: {art_err}")
 

@@ -30,6 +30,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 import pytest
 from zoneinfo import ZoneInfo
 
@@ -166,13 +167,13 @@ def test_05_payload_altered_after_capture_detected(tmp_path: Path):
     nsei_record = next(s for s in vec.provenance.source_manifest if s.instrument_symbol == "^NSEI")
 
     # Tamper with the artifact file directly
-    artifact_file = Path(nsei_record.raw_payload_ref)
-    assert artifact_file.exists()
+    artifact_file = store.resolve_artifact_path(nsei_record.raw_payload_ref)
+    assert artifact_file is not None and artifact_file.exists()
     artifact_file.write_bytes(artifact_file.read_bytes() + b"\nTAMPERED_MALICIOUS_ROW")
 
-    validator = SnapshotBInputValidator()
+    validator = SnapshotBInputValidator(payload_store=store)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    rep = validator.validate(vec, current_time=eval_time)
+    rep = validator.validate(vec, current_time=eval_time, payload_store=store)
     assert rep.status == ValidationStatus.FAILED
     assert any("Raw payload hash mismatch" in err for err in rep.error_messages)
 
@@ -524,19 +525,19 @@ def test_19_valid_authorized_signature_passes_all_gates(tmp_path: Path):
     vec = replace(vec_raw, provenance=replace(vec_raw.provenance, attestation=att))
 
     # Validate against registry
-    validator = SnapshotBInputValidator()
+    validator = SnapshotBInputValidator(payload_store=store)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     from nifty_ai.shadow.crypto import set_default_key_registry
     set_default_key_registry(reg)
 
-    rep = validator.validate(vec, current_time=eval_time)
+    rep = validator.validate(vec, current_time=eval_time, payload_store=store)
     assert rep.status == ValidationStatus.PASSED
     assert rep.is_eligible_for_inference is True
 
     # Inference runner
-    runner = ShadowInferenceRunner()
+    runner = ShadowInferenceRunner(payload_store=store)
     temp_ledger = ShadowPredictionLedger(ledger_path=tmp_path / "temp_ledger.jsonl")
-    pred = runner.predict(vec, rep, prev_record_hash=temp_ledger.get_tip_hash())
+    pred = runner.predict(vec, rep, prev_record_hash=temp_ledger.get_tip_hash(), payload_store=store)
     assert pred.manifest_hash is not None
     assert pred.raw_evidence_digest is not None
 
@@ -569,22 +570,22 @@ def test_21_inference_rejected_after_manifest_mutation(tmp_path: Path):
     store = RawPayloadStore(base_dir=tmp_path / "raw")
     vec = build_test_prospective_feature_vector("2026-11-02", payload_store=store)
 
-    validator = SnapshotBInputValidator()
+    validator = SnapshotBInputValidator(payload_store=store)
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    rep = validator.validate(vec, current_time=eval_time)
+    rep = validator.validate(vec, current_time=eval_time, payload_store=store)
     assert rep.status == ValidationStatus.PASSED
 
     # Corrupt artifact reference in manifest right before inference
     tainted = [
-        replace(s, raw_payload_ref=str(tmp_path / "corrupted_missing_file.bin"))
+        replace(s, raw_payload_ref="nonexistent_subfolder/corrupted_missing_file.bin")
         if s.instrument_symbol == "^NSEI" else s
         for s in vec.provenance.source_manifest
     ]
     tampered_vec = replace(vec, provenance=replace(vec.provenance, source_manifest=tainted))
 
-    runner = ShadowInferenceRunner()
+    runner = ShadowInferenceRunner(payload_store=store)
     with pytest.raises(ValueError, match="Raw payload artifact verification failed"):
-        runner.predict(tampered_vec, rep)
+        runner.predict(tampered_vec, rep, payload_store=store)
 
 
 # ---------------------------------------------------------------------------
@@ -856,4 +857,279 @@ def test_30_production_manifest_validates_timezones_and_chronology(tmp_path: Pat
             instrument_metadata=bad_time_meta,
             payload_store=store,
         )
+
+
+# ---------------------------------------------------------------------------
+# 31. Strict Raw Artifact Path Containment (Issue 1)
+# ---------------------------------------------------------------------------
+def test_31_artifact_path_containment_rejects_absolute_traversal_and_schemes(tmp_path: Path):
+    """Artifact resolver strictly rejects absolute paths, URI schemes, and traversal escapes."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+
+    # Store one genuine payload
+    sha, rel_ref = store.store_payload("2026-11-02", "^NSEI", b"GENUINE_EVIDENCE_PAYLOAD")
+    assert not Path(rel_ref).is_absolute()
+    resolved = store.resolve_artifact_path(rel_ref)
+    assert resolved is not None
+    assert resolved.exists()
+    assert resolved.is_file()
+
+    # Rejection of absolute paths
+    assert store.resolve_artifact_path("/etc/passwd") is None
+    assert store.resolve_artifact_path("/var/log/system.log") is None
+    assert store.resolve_artifact_path("C:\\Windows\\win.ini") is None
+    assert store.resolve_artifact_path("D:\\secret.txt") is None
+    assert store.resolve_artifact_path("\\\\server\\share\\payload.bin") is None
+
+    # Rejection of URI schemes
+    assert store.resolve_artifact_path(f"payload_ref://^NSEI/2026-11-02") is None
+    assert store.resolve_artifact_path("file:///etc/passwd") is None
+    assert store.resolve_artifact_path("http://malicious-server.com/payload.bin") is None
+    assert store.resolve_artifact_path("https://malicious-server.com/payload.bin") is None
+
+    # Rejection of path traversal escapes
+    assert store.resolve_artifact_path("../outside.bin") is None
+    assert store.resolve_artifact_path("../../secret.bin") is None
+    assert store.resolve_artifact_path(f"2026-11-02/../../outside.bin") is None
+
+    # Rejection of invalid types
+    assert store.resolve_artifact_path("") is None
+    assert store.resolve_artifact_path("   ") is None
+    assert store.resolve_artifact_path(None) is None
+    assert store.resolve_artifact_path(12345) is None
+
+    # verify_artifact fails closed on malicious paths
+    is_valid, err = store.verify_artifact("C:\\Windows\\win.ini", sha)
+    assert is_valid is False
+    assert "unresolvable" in err or "could not be safely resolved" in err
+
+    is_valid, err = store.verify_artifact("payload_ref://fake", sha)
+    assert is_valid is False
+    assert "Fake payload URI scheme rejected" in err
+
+    # Genuine verification succeeds
+    is_valid, err = store.verify_artifact(rel_ref, sha)
+    assert is_valid is True
+    assert err is None
+
+
+# ---------------------------------------------------------------------------
+# 32. Missing or Invalid Timezone Fails Closed (Issue 2)
+# ---------------------------------------------------------------------------
+def test_32_missing_or_invalid_timezone_fails_closed_across_all_instruments(tmp_path: Path):
+    """Missing, empty, invalid ZoneInfo, or mismatched timezones fail closed for all 18 instruments."""
+    from nifty_ai.shadow.contracts import CANONICAL_TIMEZONES
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+
+    required = ["^NSEI", "CALENDAR"] + list(CANONICAL_CONTEXT_MAPPING.keys())
+    payloads = {sym: f"DATA_{sym}".encode("utf-8") for sym in required}
+    now_utc = datetime(2026, 11, 2, 8, 48, 0, tzinfo=timezone.utc)
+
+    # Base valid metadata
+    base_meta = {
+        sym: {
+            "observation_time": now_utc - timedelta(minutes=3),
+            "availability_time": now_utc - timedelta(minutes=1),
+            "ingestion_time": now_utc,
+            "timezone": CANONICAL_TIMEZONES[sym],
+        }
+        for sym in required
+    }
+
+    # 1. Missing timezone key fails closed
+    for sym in ["^NSEI", "CALENDAR", "^GSPC", "BZ=F", "^N225"]:
+        meta_missing = {k: dict(v) for k, v in base_meta.items()}
+        del meta_missing[sym]["timezone"]
+        with pytest.raises(ValueError, match=f"Metadata for '{re.escape(sym)}' missing explicit timezone"):
+            build_production_source_manifest(
+                session_date="2026-11-02",
+                instrument_payloads=payloads,
+                instrument_metadata=meta_missing,
+                payload_store=store,
+            )
+
+    # 2. Empty timezone string fails closed
+    for sym in ["^NSEI", "^DJI", "^FTSE"]:
+        meta_empty = {k: dict(v) for k, v in base_meta.items()}
+        meta_empty[sym]["timezone"] = ""
+        with pytest.raises(ValueError, match=f"Metadata for '{re.escape(sym)}' missing explicit timezone"):
+            build_production_source_manifest(
+                session_date="2026-11-02",
+                instrument_payloads=payloads,
+                instrument_metadata=meta_empty,
+                payload_store=store,
+            )
+
+    # 3. Invalid ZoneInfo fails closed
+    meta_invalid = {k: dict(v) for k, v in base_meta.items()}
+    meta_invalid["^NSEI"]["timezone"] = "Invalid/Nonexistent_Zone"
+    with pytest.raises(ValueError, match="Invalid timezone 'Invalid/Nonexistent_Zone'"):
+        build_production_source_manifest(
+            session_date="2026-11-02",
+            instrument_payloads=payloads,
+            instrument_metadata=meta_invalid,
+            payload_store=store,
+        )
+
+    # 4. Mismatched timezone fails closed
+    meta_mismatch = {k: dict(v) for k, v in base_meta.items()}
+    meta_mismatch["^GSPC"]["timezone"] = "Asia/Kolkata"  # GSPC must be America/New_York
+    with pytest.raises(ValueError, match="Timezone for '\\^GSPC' must match canonical timezone 'America/New_York'"):
+        build_production_source_manifest(
+            session_date="2026-11-02",
+            instrument_payloads=payloads,
+            instrument_metadata=meta_mismatch,
+            payload_store=store,
+        )
+
+    # 5. Validator fails closed on missing/mismatched timezone in source record
+    vec = build_test_prospective_feature_vector("2026-11-02", payload_store=store)
+    tainted = [
+        replace(s, timezone="America/Chicago") if s.instrument_symbol == "^NSEI" else s
+        for s in vec.provenance.source_manifest
+    ]
+    vec_bad_tz = replace(vec, provenance=replace(vec.provenance, source_manifest=tainted))
+    validator = SnapshotBInputValidator(payload_store=store)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec_bad_tz, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("does not match canonical timezone 'Asia/Kolkata'" in err for err in rep.error_messages)
+
+
+# ---------------------------------------------------------------------------
+# 33. Authoritative Staleness Recomputation (Issue 3)
+# ---------------------------------------------------------------------------
+def test_33_staleness_recomputation_rejects_caller_tampered_staleness(tmp_path: Path):
+    """Declared staleness differing from authoritative (cutoff - obs_time) fails closed."""
+    from nifty_ai.shadow.contracts import CANONICAL_TIMEZONES
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+
+    required = ["^NSEI", "CALENDAR"] + list(CANONICAL_CONTEXT_MAPPING.keys())
+    payloads = {sym: f"DATA_{sym}".encode("utf-8") for sym in required}
+    obs_time = datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE)
+    avail_time = datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE)
+    ingest_time = datetime(2026, 11, 2, 8, 49, 0, tzinfo=MARKET_TIMEZONE)
+
+    # For 08:50 cutoff and 08:45 obs_time, authoritative staleness is exactly 300.0s
+    metadata = {
+        sym: {
+            "observation_time": obs_time,
+            "availability_time": avail_time,
+            "ingestion_time": ingest_time,
+            "timezone": CANONICAL_TIMEZONES[sym],
+            "staleness_seconds": 999.0,  # Falsified staleness
+        }
+        for sym in required
+    }
+
+    with pytest.raises(ValueError, match="does not match authoritative staleness"):
+        build_production_source_manifest(
+            session_date="2026-11-02",
+            instrument_payloads=payloads,
+            instrument_metadata=metadata,
+            payload_store=store,
+        )
+
+    # Validator fails closed on tampered staleness
+    vec = build_test_prospective_feature_vector("2026-11-02", payload_store=store)
+    tampered_staleness = [
+        replace(s, staleness_seconds=12.5) if s.instrument_symbol == "^NSEI" else s
+        for s in vec.provenance.source_manifest
+    ]
+    vec_bad_staleness = replace(vec, provenance=replace(vec.provenance, source_manifest=tampered_staleness))
+    validator = SnapshotBInputValidator(payload_store=store)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec_bad_staleness, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("does not match authoritative recomputed staleness" in err for err in rep.error_messages)
+
+
+# ---------------------------------------------------------------------------
+# 34. Provider Authenticity vs Operator Attestation (Issue 4)
+# ---------------------------------------------------------------------------
+def test_34_provider_authenticity_vs_operator_attestation(tmp_path: Path):
+    """PROSPECTIVE_LIVE_CAPTURE requires trusted provider; untrusted provider fails closed."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+
+    # 1. Prospective live capture with unauthorized caller-declared provider fails validator
+    vec_untrusted = build_test_prospective_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        source_id="unverified_third_party_vendor",
+        payload_store=store,
+    )
+    validator = SnapshotBInputValidator(payload_store=store)
+    eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
+    rep = validator.validate(vec_untrusted, current_time=eval_time)
+    assert rep.status == ValidationStatus.FAILED
+    assert any("not an authorized trusted live provider" in err for err in rep.error_messages)
+
+    # 2. Saving untrusted prospective vector and loading via live_data yields DATA_SOURCE_BLOCKED
+    test_file = tmp_path / "untrusted_live.json"
+    test_file.write_text(json.dumps(vec_untrusted.to_dict()), encoding="utf-8")
+    result = attempt_live_feature_capture(
+        session_date="2026-11-02",
+        input_file_path=test_file,
+        current_time=eval_time,
+        payload_store=store,
+    )
+    assert result.status == CaptureStatus.DATA_SOURCE_BLOCKED
+    assert "not an authorized trusted live provider" in result.reason
+
+    # 3. Authorized operator-attested capture succeeds
+    priv, pub = generate_operator_keypair()
+    auth_key = AuthorizedOperatorKey(
+        operator_id="operator_sec_audit",
+        key_id="ed25519_sec_key_01",
+        public_key_hex=pub,
+        valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        valid_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        is_revoked=False,
+    )
+    reg = OperatorKeyRegistry([auth_key])
+    vec_att = build_test_prospective_feature_vector(
+        "2026-11-02",
+        provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+        source_id="operator_feed",
+        payload_store=store,
+        operator_key_registry=reg,
+    )
+    att = create_operator_attestation(
+        feature_vector=vec_att,
+        operator_id="operator_sec_audit",
+        key_id="ed25519_sec_key_01",
+        private_key_hex=priv,
+        signed_timestamp=datetime(2026, 11, 2, 8, 49, 0, tzinfo=MARKET_TIMEZONE),
+    )
+    vec_signed = replace(vec_att, provenance=replace(vec_att.provenance, attestation=att))
+    rep_att = validator.validate(
+        vec_signed,
+        current_time=eval_time,
+        operator_key_registry=reg,
+        payload_store=store,
+    )
+    assert rep_att.status == ValidationStatus.PASSED
+
+
+# ---------------------------------------------------------------------------
+# 35. Deterministic Canonical JSON Profile RFC 8785 (Issue 6)
+# ---------------------------------------------------------------------------
+def test_35_deterministic_canonical_json_profile_rfc8785():
+    """Verify deterministic canonical JSON serialization profile in compute_manifest_hash."""
+    manifest = build_test_source_manifest("2026-11-02")
+    h1 = compute_manifest_hash(manifest)
+
+    # Shuffled order of records in manifest must produce identical hash (sorted by symbol, source_id)
+    shuffled = list(reversed(manifest))
+    h2 = compute_manifest_hash(shuffled)
+    assert h1 == h2
+
+    # Perturbing even a single float precision or character changes hash
+    perturbed = [
+        replace(s, staleness_seconds=s.staleness_seconds + 0.001)
+        if s.instrument_symbol == "^NSEI" else s
+        for s in manifest
+    ]
+    h3 = compute_manifest_hash(perturbed)
+    assert h1 != h3
 

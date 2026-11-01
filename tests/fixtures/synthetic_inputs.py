@@ -24,6 +24,7 @@ from nifty_ai.shadow.contracts import (
     SourceProvenance,
 )
 from nifty_ai.shadow.crypto import (
+    DEFAULT_RAW_CAPTURE_DIR,
     OperatorKeyRegistry,
     RawPayloadStore,
     compute_manifest_hash,
@@ -34,7 +35,7 @@ from nifty_ai.shadow.crypto import (
 from nifty_ai.shadow.input_validator import compute_feature_vector_hash
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
-TEST_PAYLOAD_DIR = PROJECT_ROOT / "data" / "interim" / "test_raw_captures"
+TEST_PAYLOAD_DIR = DEFAULT_RAW_CAPTURE_DIR
 
 
 def build_test_source_manifest(
@@ -45,9 +46,14 @@ def build_test_source_manifest(
     availability_time: Optional[datetime] = None,
     ingestion_time: Optional[datetime] = None,
     payload_store: Optional[RawPayloadStore] = None,
+    cutoff_time: Optional[datetime] = None,
 ) -> List[InstrumentSourceRecord]:
     """Build a complete, authentic 18-record source manifest backed by real payload files."""
     dt_session = datetime.strptime(session_date, "%Y-%m-%d").date()
+    cutoff_ref = cutoff_time or datetime.combine(dt_session, time(8, 50, 0), tzinfo=MARKET_TIMEZONE)
+    # Ensure timezone alignment for staleness computation even if naive cutoff passed for testing
+    c_calc = cutoff_ref.replace(tzinfo=MARKET_TIMEZONE) if cutoff_ref.tzinfo is None else cutoff_ref
+
     obs_ref = observation_time or datetime.combine(dt_session, time(8, 45, 0), tzinfo=MARKET_TIMEZONE)
     avail_ref = availability_time or datetime.combine(dt_session, time(8, 48, 0), tzinfo=MARKET_TIMEZONE)
     ingest_time = ingestion_time or (avail_ref + timedelta(minutes=1))
@@ -58,6 +64,7 @@ def build_test_source_manifest(
     # 1. ^NSEI cash history (40 price-derived features)
     nsei_payload = f"EXCHANGE=NSE\nSYMBOL=^NSEI\nSESSION={session_date}\nOHLCV_HISTORY_ROWS=250\n".encode("utf-8")
     nsei_hash, nsei_ref = store.store_payload(session_date, "^NSEI", nsei_payload)
+    nsei_staleness = (c_calc - obs_ref).total_seconds()
     records.append(
         InstrumentSourceRecord(
             source_id=f"{source_id}_nsei_cash",
@@ -70,7 +77,7 @@ def build_test_source_manifest(
             timezone="Asia/Kolkata",
             raw_payload_hash=nsei_hash,
             provenance_type=provenance_type,
-            staleness_seconds=0.0,
+            staleness_seconds=nsei_staleness,
             raw_payload_ref=nsei_ref,
         )
     )
@@ -79,6 +86,7 @@ def build_test_source_manifest(
     cal_payload = f"CALENDAR_ENGINE=NSE_TRADING_CALENDAR\nSESSION_DATE={session_date}\n".encode("utf-8")
     cal_hash, cal_ref = store.store_payload(session_date, "CALENDAR", cal_payload)
     cal_time = datetime.combine(dt_session, time(0, 0, 0), tzinfo=MARKET_TIMEZONE)
+    cal_staleness = (c_calc - cal_time).total_seconds()
     records.append(
         InstrumentSourceRecord(
             source_id=f"{source_id}_calendar",
@@ -91,34 +99,18 @@ def build_test_source_manifest(
             timezone="Asia/Kolkata",
             raw_payload_hash=cal_hash,
             provenance_type=provenance_type,
-            staleness_seconds=0.0,
+            staleness_seconds=cal_staleness,
             raw_payload_ref=cal_ref,
         )
     )
 
     # 3. Market context (16 instruments, 18 features)
-    timezones = {
-        "^NSEBANK": "Asia/Kolkata",
-        "^GSPC": "America/New_York",
-        "^IXIC": "America/New_York",
-        "^DJI": "America/New_York",
-        "BZ=F": "Europe/London",
-        "CL=F": "America/New_York",
-        "GC=F": "America/New_York",
-        "DX-Y.NYB": "America/New_York",
-        "^N225": "Asia/Tokyo",
-        "^HSI": "Asia/Hong_Kong",
-        "^FTSE": "Europe/London",
-        "^INDIAVIX": "Asia/Kolkata",
-        "^VIX": "America/New_York",
-        "IN10YT=RR": "Asia/Kolkata",
-        "^TNX": "America/New_York",
-        "INR=X": "Asia/Kolkata",
-    }
+    from nifty_ai.shadow.contracts import CANONICAL_TIMEZONES
 
     for sym, (family, feat_list) in CANONICAL_CONTEXT_MAPPING.items():
         ctx_payload = f"EXCHANGE_DATA\nINSTRUMENT={sym}\nSESSION={session_date}\nSTATUS=FINAL\n".encode("utf-8")
         ctx_hash, ctx_ref = store.store_payload(session_date, sym, ctx_payload)
+        ctx_staleness = (c_calc - obs_ref).total_seconds()
         records.append(
             InstrumentSourceRecord(
                 source_id=f"{source_id}_{sym.replace('^', '').replace('=', '_')}",
@@ -128,10 +120,10 @@ def build_test_source_manifest(
                 observation_time=obs_ref,
                 availability_time=avail_ref,
                 ingestion_time=ingest_time,
-                timezone=timezones.get(sym, "UTC"),
+                timezone=CANONICAL_TIMEZONES[sym],
                 raw_payload_hash=ctx_hash,
                 provenance_type=provenance_type,
-                staleness_seconds=0.0,
+                staleness_seconds=ctx_staleness,
                 raw_payload_ref=ctx_ref,
             )
         )
@@ -187,6 +179,7 @@ def build_test_prospective_feature_vector(
             availability_time=availability_time,
             ingestion_time=ingestion_time,
             payload_store=store,
+            cutoff_time=cutoff_time,
         )
     else:
         manifest = source_manifest

@@ -19,8 +19,10 @@ from nifty_ai.shadow.contracts import (
     CANONICAL_FEATURES_63,
     CANONICAL_PRICE_DERIVED_40,
     CANONICAL_PRICE_FEATURES_45,
+    CANONICAL_TIMEZONES,
     FeatureVector,
     ProvenanceType,
+    TRUSTED_LIVE_PROVIDERS,
     ValidationReport,
     ValidationStatus,
 )
@@ -42,8 +44,13 @@ def compute_feature_vector_hash(feature_names: List[str], feature_values: List[f
 class SnapshotBInputValidator:
     """Validates Snapshot B (08:50 IST) point-in-time inputs against immutable research constraints."""
 
-    def __init__(self, activation_boundary_utc: datetime = ACTIVATION_BOUNDARY_UTC):
+    def __init__(
+        self,
+        activation_boundary_utc: datetime = ACTIVATION_BOUNDARY_UTC,
+        payload_store: Optional[Any] = None,
+    ):
         self.activation_boundary_utc = activation_boundary_utc
+        self.payload_store = payload_store
 
     def validate(
         self,
@@ -51,6 +58,7 @@ class SnapshotBInputValidator:
         current_time: Optional[datetime] = None,
         allow_historical_research: bool = False,
         operator_key_registry: Optional[Any] = None,
+        payload_store: Optional[Any] = None,
     ) -> ValidationReport:
         """Execute strict fail-closed validation of a Snapshot B feature vector."""
         if current_time is not None:
@@ -352,12 +360,20 @@ class SnapshotBInputValidator:
             duplicate_features = []
             unknown_features = []
 
-            # Invariant: Reject synthetic/test providers in prospective production pipeline
+            from nifty_ai.shadow.crypto import RawPayloadStore
+            active_store = payload_store or self.payload_store or RawPayloadStore()
+
+            # Invariant: Reject synthetic/test providers and require trusted provider identity for prospective live capture
             if is_prospective:
                 if any(sub in (prov.source_id or "").lower() for sub in ["synthetic", "test", "mock", "dummy"]):
                     manifest_errors.append(
                         f"Vector source_id '{prov.source_id}' is a synthetic/test identifier, rejected from prospective pipeline."
                     )
+                if prov.provenance_type == ProvenanceType.PROSPECTIVE_LIVE_CAPTURE:
+                    if prov.source_id not in TRUSTED_LIVE_PROVIDERS:
+                        manifest_errors.append(
+                            f"Vector provider '{prov.source_id}' is not an authorized trusted live provider for prospective capture. Trusted: {sorted(list(TRUSTED_LIVE_PROVIDERS))}."
+                        )
 
             for src in prov.source_manifest:
                 # Provenance type matching
@@ -381,9 +397,7 @@ class SnapshotBInputValidator:
 
                 # Raw payload artifact retrieval and verification
                 if src.raw_payload_ref:
-                    from nifty_ai.shadow.crypto import RawPayloadStore
-                    store = RawPayloadStore()
-                    is_art_valid, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                    is_art_valid, art_err = active_store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
                     if not is_art_valid:
                         manifest_errors.append(
                             f"Source {src.instrument_symbol}: raw payload artifact verification failed: {art_err}"
@@ -401,7 +415,7 @@ class SnapshotBInputValidator:
                     if feat not in CANONICAL_FEATURES_63:
                         unknown_features.append(feat)
 
-                # Timezone awareness
+                # Timezone awareness and canonical validation (Issue 2)
                 time_naive = False
                 if src.observation_time is None or src.observation_time.tzinfo is None:
                     manifest_errors.append(f"Source {src.instrument_symbol}: observation_time lacks timezone awareness.")
@@ -413,6 +427,20 @@ class SnapshotBInputValidator:
                     manifest_errors.append(f"Source {src.instrument_symbol}: ingestion_time lacks timezone awareness.")
                     time_naive = True
 
+                if not getattr(src, "timezone", None) or not isinstance(src.timezone, str) or not src.timezone.strip():
+                    manifest_errors.append(f"Source {src.instrument_symbol}: missing explicit timezone.")
+                else:
+                    clean_tz = src.timezone.strip()
+                    try:
+                        ZoneInfo(clean_tz)
+                    except Exception as e:
+                        manifest_errors.append(f"Source {src.instrument_symbol}: invalid timezone '{clean_tz}': {e}.")
+                    expected_tz = CANONICAL_TIMEZONES.get(src.instrument_symbol)
+                    if expected_tz is not None and clean_tz != expected_tz:
+                        manifest_errors.append(
+                            f"Source {src.instrument_symbol}: timezone '{clean_tz}' does not match canonical timezone '{expected_tz}'."
+                        )
+
                 if time_naive:
                     continue
 
@@ -420,6 +448,13 @@ class SnapshotBInputValidator:
                 src_avail_utc = src.availability_time.astimezone(timezone.utc)
                 src_ingest_utc = src.ingestion_time.astimezone(timezone.utc)
                 cutoff_utc = expected_cutoff.astimezone(timezone.utc)
+
+                # Issue 3: Authoritative staleness recomputation check (within 1.0s tolerance)
+                expected_staleness = (cutoff_utc - src_obs_utc).total_seconds()
+                if abs(src.staleness_seconds - expected_staleness) > 1.0:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: declared staleness {src.staleness_seconds}s does not match authoritative recomputed staleness {expected_staleness}s within 1.0s tolerance."
+                    )
 
                 # 1. Timestamp ordering: observation <= availability <= ingestion <= evaluation
                 if src_obs_utc > src_avail_utc:
