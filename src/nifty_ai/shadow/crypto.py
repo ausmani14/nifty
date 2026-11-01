@@ -1,6 +1,6 @@
 """Cryptographic primitives, Ed25519 signatures, and payload verification for NIFTY AI.
 
-Implements pure-Python RFC 8032 Ed25519 verification with zero external dependencies,
+Implements RFC 8032 Ed25519 verification using standard cryptography library,
 ensuring operator attestations and source payload hashes are cryptographically authentic
 and tamper-evident.
 """
@@ -10,126 +10,26 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 from nifty_ai.config import PROJECT_ROOT
 from nifty_ai.shadow.contracts import (
     AuthorizedOperatorKey,
+    CANONICAL_CONTEXT_MAPPING,
     OPERATOR_ATTESTATION_PROTOCOL_VERSION,
 )
-
-# RFC 8032 Curve25519 / Ed25519 Parameters
-_B = 256
-_Q = 2**255 - 19
-_L = 2**252 + 27742317777372353535851937790883648493
-
-
-def _H(m: bytes) -> bytes:
-    return hashlib.sha512(m).digest()
-
-
-def _inv(x: int) -> int:
-    return pow(x, _Q - 2, _Q)
-
-
-_D = -121665 * _inv(121666) % _Q
-_I = pow(2, (_Q - 1) // 4, _Q)
-
-
-def _xrecover(y: int) -> int:
-    xx = (y * y - 1) * _inv(_D * y * y + 1)
-    x = pow(xx, (_Q + 3) // 8, _Q)
-    if (x * x - xx) % _Q != 0:
-        x = (x * _I) % _Q
-    if x % 2 != 0:
-        x = _Q - x
-    return x
-
-
-_By = 4 * _inv(5) % _Q
-_Bx = _xrecover(_By)
-_BasePoint = [_Bx, _By]
-
-
-def _edwards(P: List[int], Q: List[int]) -> List[int]:
-    x1, y1 = P[0], P[1]
-    x2, y2 = Q[0], Q[1]
-    x3 = (x1 * y2 + x2 * y1) * _inv(1 + _D * x1 * x2 * y1 * y2) % _Q
-    y3 = (y1 * y2 + x1 * x2) * _inv(1 - _D * x1 * x2 * y1 * y2) % _Q
-    return [x3, y3]
-
-
-def _scalarmult(P: List[int], e: int) -> List[int]:
-    if e == 0:
-        return [0, 1]
-    Q = _scalarmult(P, e // 2)
-    Q = _edwards(Q, Q)
-    if e & 1:
-        Q = _edwards(Q, P)
-    return Q
-
-
-def _encodeint(y: int) -> bytes:
-    return int(y).to_bytes(32, "little")
-
-
-def _encodepoint(P: List[int]) -> bytes:
-    x, y = P[0], P[1]
-    bits = [(y >> i) & 1 for i in range(_B - 1)] + [x & 1]
-    return bytes(sum([bits[i * 8 + j] << j for j in range(8)]) for i in range(_B // 8))
-
-
-def _bit(h: bytes, i: int) -> int:
-    return (h[i // 8] >> (i % 8)) & 1
-
-
-def _publickey(sk: bytes) -> bytes:
-    h = _H(sk)
-    a = 2 ** (_B - 2) + sum(2**i * _bit(h, i) for i in range(3, _B - 2))
-    A = _scalarmult(_BasePoint, a)
-    return _encodepoint(A)
-
-
-def _Hint(m: bytes) -> int:
-    h = _H(m)
-    return int.from_bytes(h, "little")
-
-
-def _signature(m: bytes, sk: bytes, pk: bytes) -> bytes:
-    h = _H(sk)
-    a = 2 ** (_B - 2) + sum(2**i * _bit(h, i) for i in range(3, _B - 2))
-    r = _Hint(bytes(h[_B // 8 :]) + m)
-    R = _scalarmult(_BasePoint, r)
-    S = (r + _Hint(_encodepoint(R) + pk + m) * a) % _L
-    return _encodepoint(R) + _encodeint(S)
-
-
-def _isoncurve(P: List[int]) -> bool:
-    x, y = P[0], P[1]
-    return (-x * x + y * y - 1 - _D * x * x * y * y) % _Q == 0
-
-
-def _decodeint(s: bytes) -> int:
-    return int.from_bytes(s, "little")
-
-
-def _decodepoint(s: bytes) -> List[int]:
-    y = sum(2**i * _bit(s, i) for i in range(0, _B - 1))
-    x = _xrecover(y)
-    if (x & 1) != _bit(s, _B - 1):
-        x = _Q - x
-    P = [x, y]
-    if not _isoncurve(P):
-        raise ValueError("Decoding point that is not on curve")
-    return P
 
 
 def ed25519_sign(message: bytes, private_key_bytes: bytes) -> bytes:
     """Generate RFC 8032 Ed25519 signature (64 bytes)."""
     if len(private_key_bytes) != 32:
         raise ValueError(f"Private key must be exactly 32 bytes, got {len(private_key_bytes)}")
-    pk = _publickey(private_key_bytes)
-    return _signature(message, private_key_bytes, pk)
+    priv = ed25519.Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+    return priv.sign(message)
 
 
 def ed25519_verify(message: bytes, signature_bytes: bytes, public_key_bytes: bytes) -> bool:
@@ -137,16 +37,10 @@ def ed25519_verify(message: bytes, signature_bytes: bytes, public_key_bytes: byt
     if len(signature_bytes) != 64 or len(public_key_bytes) != 32:
         return False
     try:
-        R = _decodepoint(signature_bytes[:32])
-        A = _decodepoint(public_key_bytes)
-        S = _decodeint(signature_bytes[32:])
-        if S >= _L:
-            return False
-        h = _Hint(_encodepoint(R) + public_key_bytes + message)
-        v1 = _scalarmult(_BasePoint, S)
-        v2 = _edwards(R, _scalarmult(A, h))
-        return v1 == v2
-    except Exception:
+        pub = ed25519.Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        pub.verify(signature_bytes, message)
+        return True
+    except (InvalidSignature, Exception):
         return False
 
 
@@ -156,47 +50,50 @@ def generate_operator_keypair() -> Tuple[str, str]:
     Returns (private_key_hex, public_key_hex).
     The private key must NEVER be committed to version control.
     """
-    sk = os.urandom(32)
-    pk = _publickey(sk)
+    priv = ed25519.Ed25519PrivateKey.generate()
+    sk = priv.private_bytes_raw()
+    pk = priv.public_key().public_bytes_raw()
     return sk.hex(), pk.hex()
 
 
 def derive_public_key(private_key_hex: str) -> str:
     """Derive public key hex from 32-byte private key hex."""
     sk = bytes.fromhex(private_key_hex)
-    return _publickey(sk).hex()
+    priv = ed25519.Ed25519PrivateKey.from_private_bytes(sk)
+    return priv.public_key().public_bytes_raw().hex()
 
 
 def compute_manifest_hash(source_manifest: List[Any]) -> str:
     """Compute deterministic SHA-256 hash across all security-relevant fields of source manifest records.
     
-    Covers: source_id, instrument_symbol, feature_family, sorted feature_names,
-    observation_time, availability_time, ingestion_time, timezone, raw_payload_hash,
-    provenance_type, staleness_seconds, and raw_payload_ref.
+    Uses canonical JSON serialization (RFC 8785) with sorted keys and compact separators:
+    source_id, instrument_symbol, feature_family, feature_names (sorted),
+    observation_time (ISO), availability_time (ISO), ingestion_time (ISO), timezone,
+    raw_payload_hash (lowercase hex), provenance_type, staleness_seconds, raw_payload_ref.
     """
     sorted_records = sorted(source_manifest, key=lambda s: (s.instrument_symbol, s.source_id))
-    serialized = []
+    manifest_entries = []
     for s in sorted_records:
         prov_type = s.provenance_type.value if hasattr(s.provenance_type, "value") else str(s.provenance_type)
-        staleness_str = f"{float(getattr(s, 'staleness_seconds', 0.0)):.1f}"
+        staleness_val = round(float(getattr(s, "staleness_seconds", 0.0)), 4)
         ref_str = str(getattr(s, "raw_payload_ref", "") or "")
-        fields = [
-            str(s.source_id),
-            str(s.instrument_symbol),
-            str(s.feature_family),
-            ",".join(sorted(s.feature_names)),
-            s.observation_time.isoformat(),
-            s.availability_time.isoformat(),
-            s.ingestion_time.isoformat(),
-            str(s.timezone),
-            str(s.raw_payload_hash).lower(),
-            prov_type,
-            staleness_str,
-            ref_str,
-        ]
-        serialized.append("|".join(fields))
-    combined = "\n".join(serialized).encode("utf-8")
-    return hashlib.sha256(combined).hexdigest()
+        entry = {
+            "source_id": str(s.source_id),
+            "instrument_symbol": str(s.instrument_symbol),
+            "feature_family": str(s.feature_family),
+            "feature_names": sorted(list(s.feature_names)),
+            "observation_time": s.observation_time.isoformat(),
+            "availability_time": s.availability_time.isoformat(),
+            "ingestion_time": s.ingestion_time.isoformat(),
+            "timezone": str(s.timezone),
+            "raw_payload_hash": str(s.raw_payload_hash).lower(),
+            "provenance_type": prov_type,
+            "staleness_seconds": staleness_val,
+            "raw_payload_ref": ref_str,
+        }
+        manifest_entries.append(entry)
+    canonical_json = json.dumps(manifest_entries, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
 def compute_attestation_payload(
@@ -239,17 +136,27 @@ def verify_raw_payload_sha256(raw_bytes: bytes, declared_hash: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Raw Payload Capture Artifact Store
+# Immutable Content-Addressed Raw Payload Store
 # ---------------------------------------------------------------------------
 
 DEFAULT_RAW_CAPTURE_DIR = PROJECT_ROOT / "data" / "shadow" / "raw_captures"
 
 
 class RawPayloadStore:
-    """Persistent, retrievable content store for raw market data capture artifacts."""
+    """Persistent, retrievable, immutable content-addressed store for raw market data capture artifacts.
+    
+    Storage format: data/shadow/raw_captures/{session_date}/{safe_sym}_{sha256}.bin
+    Enforces:
+    - Atomic exclusive creation (open with mode 'xb')
+    - Content-addressed immutability (sha256 in filename and readback verification)
+    - Path traversal and symlink guards
+    - Session date validation (YYYY-MM-DD)
+    - Canonical instrument allowlist validation
+    - Portable repository-relative path resolution
+    """
 
     def __init__(self, base_dir: Optional[Path] = None):
-        self.base_dir = base_dir or DEFAULT_RAW_CAPTURE_DIR
+        self.base_dir = (base_dir or DEFAULT_RAW_CAPTURE_DIR).resolve()
 
     def store_payload(
         self,
@@ -258,27 +165,82 @@ class RawPayloadStore:
         payload_bytes: bytes,
     ) -> Tuple[str, str]:
         """Store raw binary payload and return (sha256_hash, retrievable_artifact_path)."""
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", session_date):
+            raise ValueError(f"Invalid session_date format '{session_date}': must be YYYY-MM-DD")
+        try:
+            datetime.strptime(session_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid session_date '{session_date}': not a valid calendar date")
+
+        allowed_instruments = {"^NSEI", "CALENDAR"} | set(CANONICAL_CONTEXT_MAPPING.keys())
+        if instrument_symbol not in allowed_instruments:
+            raise ValueError(f"Instrument '{instrument_symbol}' is not in canonical instrument allowlist.")
+
         if not payload_bytes:
             raise ValueError(f"Cannot store empty raw payload bytes for {instrument_symbol}")
-        safe_sym = instrument_symbol.replace("^", "").replace("=", "_").replace(".", "_")
-        target_dir = self.base_dir / session_date
-        target_dir.mkdir(parents=True, exist_ok=True)
-        artifact_path = target_dir / f"{safe_sym}.bin"
-        artifact_path.write_bytes(payload_bytes)
-        sha256_hash = hashlib.sha256(payload_bytes).hexdigest()
-        return sha256_hash, str(artifact_path.resolve())
 
-    def retrieve_payload(self, artifact_ref: str) -> Optional[bytes]:
-        """Retrieve actual raw bytes from artifact reference."""
-        if not artifact_ref:
-            return None
-        # Reject fake URI schemes
-        if artifact_ref.startswith("payload_ref://"):
+        sha256_hash = hashlib.sha256(payload_bytes).hexdigest().lower()
+        safe_sym = instrument_symbol.replace("^", "").replace("=", "_").replace(".", "_")
+
+        target_dir = (self.base_dir / session_date).resolve()
+        # Path traversal guard
+        try:
+            target_dir.relative_to(self.base_dir)
+        except ValueError:
+            raise ValueError(f"Path traversal detected: {target_dir} escapes {self.base_dir}")
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = (target_dir / f"{safe_sym}_{sha256_hash}.bin").resolve()
+
+        # Symlink guard
+        if artifact_path.is_symlink() or target_dir.is_symlink():
+            raise ValueError(f"Symlinks are prohibited in payload store: {artifact_path}")
+
+        # Atomic exclusive write
+        try:
+            with open(artifact_path, "xb") as f:
+                f.write(payload_bytes)
+        except FileExistsError:
+            # File already exists: verify SHA256 matches
+            existing_bytes = artifact_path.read_bytes()
+            existing_hash = hashlib.sha256(existing_bytes).hexdigest().lower()
+            if existing_hash != sha256_hash:
+                raise ValueError(
+                    f"Hash collision / corruption at {artifact_path}: existing {existing_hash} != {sha256_hash}"
+                )
+
+        # Immediate readback verification
+        readback_bytes = artifact_path.read_bytes()
+        readback_hash = hashlib.sha256(readback_bytes).hexdigest().lower()
+        if readback_hash != sha256_hash:
+            raise IOError(f"Readback verification failed immediately after writing {artifact_path}")
+
+        # Return repository-relative path if inside PROJECT_ROOT
+        try:
+            rel_path = artifact_path.relative_to(PROJECT_ROOT.resolve())
+            return sha256_hash, str(rel_path.as_posix())
+        except ValueError:
+            return sha256_hash, str(artifact_path)
+
+    def resolve_artifact_path(self, artifact_ref: str) -> Optional[Path]:
+        """Resolve an artifact reference to a verified, safe Path within base_dir or PROJECT_ROOT."""
+        if not artifact_ref or artifact_ref.startswith("payload_ref://"):
             return None
         p = Path(artifact_ref)
         if not p.is_absolute():
-            p = PROJECT_ROOT / p
+            p = (PROJECT_ROOT / p).resolve()
+        else:
+            p = p.resolve()
+        if p.is_symlink():
+            return None
         if not p.exists() or not p.is_file():
+            return None
+        return p
+
+    def retrieve_payload(self, artifact_ref: str) -> Optional[bytes]:
+        """Retrieve actual raw bytes from artifact reference."""
+        p = self.resolve_artifact_path(artifact_ref)
+        if p is None:
             return None
         return p.read_bytes()
 
@@ -357,14 +319,56 @@ class OperatorKeyRegistry:
         return True, None
 
 
-_DEFAULT_OPERATOR_REGISTRY: OperatorKeyRegistry = OperatorKeyRegistry()
+def load_operator_key_registry(config_path: Optional[Path] = None) -> OperatorKeyRegistry:
+    """Load authorized operator keys from reviewed JSON configuration file.
+    
+    Default path: config/operator_keys.json
+    Fails closed if the file is missing or contains invalid records.
+    """
+    target = (config_path or (PROJECT_ROOT / "config" / "operator_keys.json")).resolve()
+    if not target.exists() or not target.is_file():
+        return OperatorKeyRegistry([])
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            raise ValueError(f"operator_keys.json must contain a JSON list, got {type(data)}")
+        keys: List[AuthorizedOperatorKey] = []
+        for item in data:
+            v_from = datetime.fromisoformat(item["valid_from"])
+            if v_from.tzinfo is None:
+                raise ValueError(f"valid_from for key '{item.get('key_id')}' must be timezone-aware")
+            v_until = None
+            if item.get("valid_until"):
+                v_until = datetime.fromisoformat(item["valid_until"])
+                if v_until.tzinfo is None:
+                    raise ValueError(f"valid_until for key '{item.get('key_id')}' must be timezone-aware")
+            keys.append(
+                AuthorizedOperatorKey(
+                    operator_id=item["operator_id"],
+                    key_id=item["key_id"],
+                    public_key_hex=item["public_key_hex"],
+                    valid_from=v_from,
+                    valid_until=v_until,
+                    is_revoked=bool(item.get("is_revoked", False)),
+                )
+            )
+        return OperatorKeyRegistry(keys)
+    except Exception as e:
+        raise ValueError(f"Failed to load operator key registry from {target}: {e}")
+
+
+_DEFAULT_OPERATOR_REGISTRY: Optional[OperatorKeyRegistry] = None
 
 
 def get_default_key_registry() -> OperatorKeyRegistry:
+    global _DEFAULT_OPERATOR_REGISTRY
+    if _DEFAULT_OPERATOR_REGISTRY is None:
+        _DEFAULT_OPERATOR_REGISTRY = load_operator_key_registry()
     return _DEFAULT_OPERATOR_REGISTRY
 
 
-def set_default_key_registry(registry: OperatorKeyRegistry) -> None:
+def set_default_key_registry(registry: Optional[OperatorKeyRegistry]) -> None:
     global _DEFAULT_OPERATOR_REGISTRY
     _DEFAULT_OPERATOR_REGISTRY = registry
 
@@ -395,7 +399,7 @@ def verify_attestation(
         return False, "Attestation signed_timestamp must be timezone-aware."
 
     eval_time = evaluation_time or attestation.signed_timestamp
-    active_registry = registry or get_default_key_registry()
+    active_registry = registry if registry is not None else get_default_key_registry()
 
     # 1. Mandatory registry verification
     is_authorized, auth_err = active_registry.validate_operator_authorization(
@@ -447,7 +451,7 @@ def create_operator_attestation(
     from nifty_ai.shadow.contracts import OperatorAttestation
 
     sk_bytes = bytes.fromhex(private_key_hex)
-    pk_hex = _publickey(sk_bytes).hex()
+    pk_hex = derive_public_key(private_key_hex)
 
     if signed_timestamp is None:
         signed_timestamp = datetime.now(timezone.utc)

@@ -25,6 +25,27 @@ from nifty_ai.shadow.input_validator import compute_feature_vector_hash
 
 MARKET_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
+CANONICAL_TIMEZONES = {
+    "^NSEI": "Asia/Kolkata",
+    "CALENDAR": "Asia/Kolkata",
+    "^NSEBANK": "Asia/Kolkata",
+    "^INDIAVIX": "Asia/Kolkata",
+    "IN10YT=RR": "Asia/Kolkata",
+    "INR=X": "Asia/Kolkata",
+    "^GSPC": "America/New_York",
+    "^IXIC": "America/New_York",
+    "^DJI": "America/New_York",
+    "CL=F": "America/New_York",
+    "GC=F": "America/New_York",
+    "DX-Y.NYB": "America/New_York",
+    "^VIX": "America/New_York",
+    "^TNX": "America/New_York",
+    "BZ=F": "Europe/London",
+    "^FTSE": "Europe/London",
+    "^N225": "Asia/Tokyo",
+    "^HSI": "Asia/Hong_Kong",
+}
+
 
 def parse_iso_datetime(s: str, field_name: str) -> datetime:
     """Parse an ISO 8601 string and strictly require timezone awareness.
@@ -72,12 +93,34 @@ def build_production_source_manifest(
             f"Production source manifest missing capture metadata for {len(missing_meta)} instruments: {missing_meta}."
         )
 
+    # Validate metadata timestamps and timezones
+    for sym in required_instruments:
+        meta = instrument_metadata[sym]
+        obs_t = meta.get("observation_time")
+        avail_t = meta.get("availability_time")
+        ingest_t = meta.get("ingestion_time")
+
+        if not obs_t or not isinstance(obs_t, datetime) or obs_t.tzinfo is None:
+            raise ValueError(f"Metadata for '{sym}' observation_time must be timezone-aware datetime.")
+        if not avail_t or not isinstance(avail_t, datetime) or avail_t.tzinfo is None:
+            raise ValueError(f"Metadata for '{sym}' availability_time must be timezone-aware datetime.")
+        if not ingest_t or not isinstance(ingest_t, datetime) or ingest_t.tzinfo is None:
+            raise ValueError(f"Metadata for '{sym}' ingestion_time must be timezone-aware datetime.")
+        if ingest_t < avail_t or avail_t < obs_t:
+            raise ValueError(f"Metadata timestamps for '{sym}' must be chronological: observation <= availability <= ingestion.")
+
+        expected_tz = CANONICAL_TIMEZONES.get(sym, "UTC")
+        provided_tz = meta.get("timezone", expected_tz)
+        if provided_tz != expected_tz:
+            raise ValueError(f"Timezone for '{sym}' must match canonical timezone '{expected_tz}', got '{provided_tz}'.")
+
     records: List[InstrumentSourceRecord] = []
 
     # 1. ^NSEI (40 price-derived features)
     nsei_bytes = instrument_payloads["^NSEI"]
     nsei_meta = instrument_metadata["^NSEI"]
     nsei_hash, nsei_ref = store.store_payload(session_date, "^NSEI", nsei_bytes)
+    nsei_staleness = float(nsei_meta.get("staleness_seconds", (nsei_meta["ingestion_time"] - nsei_meta["observation_time"]).total_seconds()))
     records.append(
         InstrumentSourceRecord(
             source_id=f"{source_id}_nsei_cash",
@@ -90,7 +133,7 @@ def build_production_source_manifest(
             timezone=nsei_meta.get("timezone", "Asia/Kolkata"),
             raw_payload_hash=nsei_hash,
             provenance_type=provenance_type,
-            staleness_seconds=float(nsei_meta.get("staleness_seconds", 0.0)),
+            staleness_seconds=nsei_staleness,
             raw_payload_ref=nsei_ref,
         )
     )
@@ -99,6 +142,7 @@ def build_production_source_manifest(
     cal_bytes = instrument_payloads["CALENDAR"]
     cal_meta = instrument_metadata["CALENDAR"]
     cal_hash, cal_ref = store.store_payload(session_date, "CALENDAR", cal_bytes)
+    cal_staleness = float(cal_meta.get("staleness_seconds", (cal_meta["ingestion_time"] - cal_meta["observation_time"]).total_seconds()))
     records.append(
         InstrumentSourceRecord(
             source_id=f"{source_id}_calendar",
@@ -111,7 +155,7 @@ def build_production_source_manifest(
             timezone=cal_meta.get("timezone", "Asia/Kolkata"),
             raw_payload_hash=cal_hash,
             provenance_type=provenance_type,
-            staleness_seconds=float(cal_meta.get("staleness_seconds", 0.0)),
+            staleness_seconds=cal_staleness,
             raw_payload_ref=cal_ref,
         )
     )
@@ -121,6 +165,7 @@ def build_production_source_manifest(
         ctx_bytes = instrument_payloads[sym]
         ctx_meta = instrument_metadata[sym]
         ctx_hash, ctx_ref = store.store_payload(session_date, sym, ctx_bytes)
+        ctx_staleness = float(ctx_meta.get("staleness_seconds", (ctx_meta["ingestion_time"] - ctx_meta["observation_time"]).total_seconds()))
         records.append(
             InstrumentSourceRecord(
                 source_id=f"{source_id}_{sym.replace('^', '').replace('=', '_')}",
@@ -130,10 +175,10 @@ def build_production_source_manifest(
                 observation_time=ctx_meta["observation_time"],
                 availability_time=ctx_meta["availability_time"],
                 ingestion_time=ctx_meta["ingestion_time"],
-                timezone=ctx_meta.get("timezone", "UTC"),
+                timezone=ctx_meta.get("timezone", CANONICAL_TIMEZONES.get(sym, "UTC")),
                 raw_payload_hash=ctx_hash,
                 provenance_type=provenance_type,
-                staleness_seconds=float(ctx_meta.get("staleness_seconds", 0.0)),
+                staleness_seconds=ctx_staleness,
                 raw_payload_ref=ctx_ref,
             )
         )
@@ -143,7 +188,7 @@ def build_production_source_manifest(
 
 def build_canonical_source_manifest(
     session_date: str,
-    provenance_type: ProvenanceType = ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+    provenance_type: ProvenanceType = ProvenanceType.INVALID_OR_QUARANTINED,
     source_id: str = "canonical_source_provider",
     observation_time: Optional[datetime] = None,
     availability_time: Optional[datetime] = None,
@@ -152,26 +197,27 @@ def build_canonical_source_manifest(
     raw_payload_hashes: Optional[Dict[str, str]] = None,
     payload_store: Optional[RawPayloadStore] = None,
 ) -> List[InstrumentSourceRecord]:
-    """Build source provenance manifest.
+    """Build source provenance manifest for non-prospective records.
     
-    For prospective provenance, strictly requires authentic raw payload bytes.
-    Never produces fake descriptive string hashes or placeholder payload_ref:// URIs.
+    Strictly prohibits prospective provenance types (PROSPECTIVE_LIVE_CAPTURE,
+    OPERATOR_ATTESTED_PROSPECTIVE). Prospective pipelines MUST use
+    build_production_source_manifest with verified raw binary payloads.
     """
+    if provenance_type in {
+        ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+    }:
+        raise ValueError(
+            "build_canonical_source_manifest cannot be used for prospective provenance; "
+            "authentic raw binary payloads and build_production_source_manifest are required."
+        )
+
     store = payload_store or RawPayloadStore()
     dt_session = datetime.strptime(session_date, "%Y-%m-%d").date()
 
     obs_ref = observation_time or datetime.combine(dt_session, time(8, 45, 0), tzinfo=MARKET_TIMEZONE)
     avail_ref = availability_time or datetime.combine(dt_session, time(8, 48, 0), tzinfo=MARKET_TIMEZONE)
     ingest_time = ingestion_time or (avail_ref + timedelta(minutes=1))
-
-    # Reject missing raw payload bytes in prospective production mode
-    is_prospective = provenance_type in {
-        ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
-        ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
-    }
-    if is_prospective and not raw_payload_data and not raw_payload_hashes:
-        # If in prospective pipeline, delegate to test fixtures if in tests, but reject here if payload bytes absent
-        pass
 
     records: List[InstrumentSourceRecord] = []
 
@@ -181,9 +227,7 @@ def build_canonical_source_manifest(
             h, ref = store.store_payload(session_date, instrument, data)
             return h, ref
         if raw_payload_hashes and instrument in raw_payload_hashes:
-            # Caller supplied raw hash
             return raw_payload_hashes[instrument], None
-        # Non-prospective or testing fallback: store concrete bytes in store
         h, ref = store.store_payload(session_date, instrument, concrete_content)
         return h, ref
 
@@ -191,7 +235,7 @@ def build_canonical_source_manifest(
     price_features = list(CANONICAL_PRICE_DERIVED_40)
     p_hash, p_ref = get_payload_hash_and_ref(
         "^NSEI",
-        f"SYMBOL=^NSEI\nDATE={session_date}\nOHLCV_250_ROWS_AUTHENTIC_STREAM\n".encode("utf-8"),
+        f"SYMBOL=^NSEI\nDATE={session_date}\nNON_PROSPECTIVE_FIXTURE_PAYLOAD\n".encode("utf-8"),
     )
     records.append(
         InstrumentSourceRecord(
@@ -235,29 +279,10 @@ def build_canonical_source_manifest(
     )
 
     # 3. Market context instruments (16 instruments, 18 features)
-    timezones = {
-        "^NSEBANK": "Asia/Kolkata",
-        "^GSPC": "America/New_York",
-        "^IXIC": "America/New_York",
-        "^DJI": "America/New_York",
-        "BZ=F": "Europe/London",
-        "CL=F": "America/New_York",
-        "GC=F": "America/New_York",
-        "DX-Y.NYB": "America/New_York",
-        "^N225": "Asia/Tokyo",
-        "^HSI": "Asia/Hong_Kong",
-        "^FTSE": "Europe/London",
-        "^INDIAVIX": "Asia/Kolkata",
-        "^VIX": "America/New_York",
-        "IN10YT=RR": "Asia/Kolkata",
-        "^TNX": "America/New_York",
-        "INR=X": "Asia/Kolkata",
-    }
-
     for sym, (family, feat_list) in CANONICAL_CONTEXT_MAPPING.items():
         ctx_hash, ctx_ref = get_payload_hash_and_ref(
             sym,
-            f"INSTRUMENT={sym}\nDATE={session_date}\nFEED=POINT_IN_TIME_SNAPSHOT\n".encode("utf-8"),
+            f"INSTRUMENT={sym}\nDATE={session_date}\nNON_PROSPECTIVE_FIXTURE_PAYLOAD\n".encode("utf-8"),
         )
         records.append(
             InstrumentSourceRecord(
@@ -268,15 +293,13 @@ def build_canonical_source_manifest(
                 observation_time=obs_ref,
                 availability_time=avail_ref,
                 ingestion_time=ingest_time,
-                timezone=timezones.get(sym, "UTC"),
+                timezone=CANONICAL_TIMEZONES.get(sym, "UTC"),
                 raw_payload_hash=ctx_hash,
                 provenance_type=provenance_type,
                 staleness_seconds=0.0,
                 raw_payload_ref=ctx_ref,
             )
         )
-
-    return records
 
     return records
 
@@ -295,8 +318,21 @@ def build_synthetic_feature_vector(
 ) -> FeatureVector:
     """Construct a synthetic feature vector strictly for isolated testing.
     
-    Defaults to INVALID_OR_QUARANTINED. Never defaults to PROSPECTIVE_LIVE_CAPTURE.
+    Hard-coded to INVALID_OR_QUARANTINED. Fails closed with ValueError if caller attempts
+    to specify prospective provenance or impersonate a production source.
     """
+    if provenance_type in {
+        ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
+    }:
+        raise ValueError(
+            "build_synthetic_feature_vector is strictly quarantined and cannot accept prospective provenance."
+        )
+    if source_id != "synthetic_fixture_provider":
+        raise ValueError(
+            "Synthetic feature vectors cannot impersonate production or canonical source providers."
+        )
+
     dt_session = datetime.strptime(session_date, "%Y-%m-%d").date()
     
     if cutoff_time is None:
@@ -330,9 +366,7 @@ def build_synthetic_feature_vector(
             ingestion_time=ingestion_time,
         )
 
-    quarantine_msg = None
-    if provenance_type == ProvenanceType.INVALID_OR_QUARANTINED:
-        quarantine_msg = "Synthetic test fixture - not authorized for prospective inference."
+    quarantine_msg = "Synthetic test fixture - not authorized for prospective inference."
 
     mock_raw_data = f"SYNTHETIC_DATA_{session_date}_{source_id}".encode("utf-8")
     raw_hash = hashlib.sha256(mock_raw_data).hexdigest()
@@ -357,42 +391,6 @@ def build_synthetic_feature_vector(
         feature_values=feature_values,
         feature_hash=feature_hash,
         provenance=provenance,
-    )
-
-
-def build_verified_prospective_feature_vector(
-    session_date: str,
-    feature_values: Optional[List[float]] = None,
-    provenance_type: ProvenanceType = ProvenanceType.INVALID_OR_QUARANTINED,
-    cutoff_time: Optional[datetime] = None,
-    observation_time: Optional[datetime] = None,
-    availability_time: Optional[datetime] = None,
-    ingestion_time: Optional[datetime] = None,
-    source_id: Optional[str] = None,
-    source_manifest: Optional[List[InstrumentSourceRecord]] = None,
-    attestation: Optional[OperatorAttestation] = None,
-) -> FeatureVector:
-    """Test fixture helper. Defaults strictly to INVALID_OR_QUARANTINED.
-    
-    Production pipelines must never accept synthetic fixtures as genuine live captures.
-    """
-    from tests.fixtures.synthetic_inputs import build_test_prospective_feature_vector
-    eff_source_id = source_id or (
-        "canonical_source_provider"
-        if provenance_type in {ProvenanceType.PROSPECTIVE_LIVE_CAPTURE, ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE}
-        else "synthetic_fixture_provider"
-    )
-    return build_test_prospective_feature_vector(
-        session_date=session_date,
-        provenance_type=provenance_type,
-        source_id=eff_source_id,
-        source_manifest=source_manifest,
-        attestation=attestation,
-        cutoff_time=cutoff_time,
-        observation_time=observation_time,
-        availability_time=availability_time,
-        ingestion_time=ingestion_time,
-        feature_values=feature_values,
     )
 
 
@@ -463,4 +461,3 @@ def load_feature_vector_from_json(filepath: Path) -> FeatureVector:
         feature_hash=feature_hash,
         provenance=prov,
     )
-

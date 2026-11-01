@@ -8,7 +8,7 @@ from datetime import datetime, time, timezone
 import hashlib
 import json
 import math
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 from nifty_ai.shadow.contracts import (
@@ -50,6 +50,7 @@ class SnapshotBInputValidator:
         feature_vector: FeatureVector,
         current_time: Optional[datetime] = None,
         allow_historical_research: bool = False,
+        operator_key_registry: Optional[Any] = None,
     ) -> ValidationReport:
         """Execute strict fail-closed validation of a Snapshot B feature vector."""
         if current_time is not None:
@@ -523,7 +524,12 @@ class SnapshotBInputValidator:
                     )
                 else:
                     from nifty_ai.shadow.crypto import verify_attestation
-                    is_valid, sig_err = verify_attestation(feature_vector, prov.attestation, evaluation_time=now_dt)
+                    is_valid, sig_err = verify_attestation(
+                        feature_vector,
+                        prov.attestation,
+                        registry=operator_key_registry,
+                        evaluation_time=now_dt,
+                    )
                     if not is_valid:
                         manifest_errors.append(f"Operator attestation cryptographic verification failed: {sig_err}")
 

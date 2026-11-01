@@ -407,7 +407,7 @@ def test_evaluation_time_future_availability_rejected():
     eval_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
     # Observation at 08:30, available at 08:45, cutoff at 08:50
     # Available at 08:45 is in the future relative to evaluation at 08:35!
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
@@ -423,7 +423,7 @@ def test_evaluation_time_future_availability_rejected():
 def test_regression_historical_date_plus_input_file_rejected(tmp_path: Path):
     """ISSUE 2 Regr 1: Past session date with input file is strictly rejected."""
     in_file = tmp_path / "past_vector.json"
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2024-01-05",
         observation_time=datetime(2024, 1, 5, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2024, 1, 5, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -515,7 +515,7 @@ def test_regression_invalid_or_quarantined_provenance_rejected(tmp_path: Path):
 def test_regression_past_session_file_attempting_bypass_rejected(tmp_path: Path):
     """ISSUE 2 Regr 5: Past session date attempting bypass is caught by live_data."""
     in_file = tmp_path / "bypass_attempt.json"
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-10-30",
         observation_time=datetime(2026, 10, 30, 8, 30, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 10, 30, 8, 32, 0, tzinfo=MARKET_TIMEZONE),
@@ -644,7 +644,7 @@ def test_timing_boundary_condition_1_eval_at_0835_rejected():
     """1. Evaluation at 08:35 IST -> rejected (EVALUATION_AFTER_CUTOFF / PREMATURE_EVALUATION)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 35, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is False
     assert "EVALUATION_AFTER_CUTOFF" in rep.failed_checks
@@ -657,7 +657,7 @@ def test_timing_boundary_condition_2_eval_at_084959_rejected():
     """2. Evaluation at 08:49:59 IST -> rejected (EVALUATION_AFTER_CUTOFF / PREMATURE_EVALUATION)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 49, 59, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     rep = validator.validate(vec, current_time=eval_time)
     assert rep.is_eligible_for_inference is False
     assert "EVALUATION_AFTER_CUTOFF" in rep.failed_checks
@@ -725,7 +725,7 @@ def test_timing_boundary_condition_8_previous_day_cutoff_rejected():
     """8. Previous-day cutoff date with today's session date -> rejected (CUTOFF_DATE_MISMATCH)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         cutoff_time=datetime(2026, 11, 1, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
@@ -739,7 +739,7 @@ def test_timing_boundary_condition_9_future_day_cutoff_rejected():
     """9. Future-day cutoff date with today's session date -> rejected (CUTOFF_DATE_MISMATCH)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         cutoff_time=datetime(2026, 11, 3, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
@@ -753,7 +753,7 @@ def test_timing_boundary_condition_10_observation_later_than_cutoff_rejected():
     """10. Observation timestamp later than cutoff -> rejected (OBSERVATION_TIME_VALIDITY)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 51, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 51, 30, tzinfo=MARKET_TIMEZONE),
@@ -769,7 +769,7 @@ def test_timing_boundary_condition_11_availability_later_than_cutoff_rejected():
     """11. Availability timestamp later than cutoff -> rejected (AVAILABILITY_PRIOR_TO_CUTOFF)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 51, 0, tzinfo=MARKET_TIMEZONE),
@@ -784,9 +784,8 @@ def test_timing_boundary_condition_11_availability_later_than_cutoff_rejected():
 def test_timing_boundary_condition_12_availability_later_than_eval_rejected():
     """12. Availability timestamp later than evaluation time -> rejected (AVAILABILITY_PRIOR_TO_EVALUATION)."""
     validator = SnapshotBInputValidator()
-    # Evaluated at 08:50:10, but availability claimed at 08:50:30 (even though <= 08:50 cutoff)
     eval_time = datetime(2026, 11, 2, 8, 50, 10, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 50, 30, tzinfo=MARKET_TIMEZONE),
@@ -802,9 +801,8 @@ def test_timing_boundary_condition_13_missing_timezone_rejected():
     """13. Missing timezone on any timestamp -> rejected (TIMEZONE_AWARENESS)."""
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
-    # Naive cutoff_time without tzinfo
     naive_cutoff = datetime(2026, 11, 2, 8, 50, 0)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         cutoff_time=naive_cutoff,
         provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
@@ -831,7 +829,7 @@ def test_validator_never_synthesizes_future_evaluation_time():
     validator = SnapshotBInputValidator()
     # A session date in 2029 (definitely in the future relative to real clock)
     future_date = "2029-11-02"
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         future_date,
         cutoff_time=datetime(2029, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE),
         observation_time=datetime(2029, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
@@ -847,7 +845,7 @@ def test_validator_never_synthesizes_future_evaluation_time():
 def test_validator_rejects_naive_current_time_param():
     """Section 1: Naive current_time is explicitly rejected with ValueError."""
     validator = SnapshotBInputValidator()
-    vec = build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+    vec = build_verified_prospective_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     naive_dt = datetime(2026, 11, 2, 8, 52, 0)  # No tzinfo
     with pytest.raises(ValueError, match="current_time must be timezone-aware"):
         validator.validate(vec, current_time=naive_dt)
@@ -1022,8 +1020,8 @@ def test_source_manifest_rejects_excessively_stale_source():
 
 def test_source_manifest_rejects_pre_activation_source():
     """Section 3: A single prospective source observed before activation boundary fails validation."""
-    from nifty_ai.shadow.input_capture import build_canonical_source_manifest
-    manifest = build_canonical_source_manifest("2026-11-02")
+    from tests.fixtures.synthetic_inputs import build_test_source_manifest
+    manifest = build_test_source_manifest("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
     tainted_manifest = []
     for s in manifest:
         if s.instrument_symbol == "^NSEI":
@@ -1038,6 +1036,7 @@ def test_source_manifest_rejects_pre_activation_source():
                 timezone=s.timezone,
                 raw_payload_hash=s.raw_payload_hash,
                 provenance_type=s.provenance_type,
+                raw_payload_ref=s.raw_payload_ref,
             )
             tainted_manifest.append(tainted_s)
         else:
@@ -1113,10 +1112,18 @@ def test_issue8_scenario_03_synthetic_vector_default_parameters():
 
 def test_issue8_scenario_04_synthetic_vector_manually_relabelled_prospective():
     """4. Synthetic feature vector manually relabelled PROSPECTIVE_LIVE_CAPTURE fails closed."""
-    vec = build_synthetic_feature_vector(
-        "2026-11-02",
-        provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
-    )
+    from dataclasses import replace
+
+    # Attempting to construct synthetic vector with prospective provenance raises ValueError
+    with pytest.raises(ValueError, match="strictly quarantined"):
+        build_synthetic_feature_vector(
+            "2026-11-02",
+            provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE,
+        )
+
+    # Manually relabelling a synthetic vector after build is caught by validator
+    base = build_synthetic_feature_vector("2026-11-02")
+    vec = replace(base, provenance=replace(base.provenance, provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE))
     validator = SnapshotBInputValidator()
     eval_time = datetime(2026, 11, 2, 8, 52, 0, tzinfo=MARKET_TIMEZONE)
     rep = validator.validate(vec, current_time=eval_time)

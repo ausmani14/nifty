@@ -13,6 +13,8 @@ from nifty_ai.shadow.contracts import (
 )
 from nifty_ai.shadow.input_capture import (
     build_synthetic_feature_vector,
+)
+from tests.fixtures.synthetic_inputs import (
     build_verified_prospective_feature_vector,
 )
 from nifty_ai.shadow.input_validator import (
@@ -44,7 +46,7 @@ def test_valid_synthetic_feature_vector_passes():
 def test_validator_rejects_future_session_date_without_current_time():
     validator = SnapshotBInputValidator()
     # Future session date evaluated at real clock time
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -159,7 +161,7 @@ def test_nan_or_inf_values_rejected():
 def test_activation_boundary_enforcement():
     validator = SnapshotBInputValidator()
     # Observation before activation boundary (e.g. October 15, 2026) marked as prospective
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-10-15",
         observation_time=datetime(2026, 10, 15, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 10, 15, 8, 48, 0, tzinfo=MARKET_TIMEZONE),
@@ -176,7 +178,7 @@ def test_load_feature_vector_from_json(tmp_path):
     import json
     from nifty_ai.shadow.input_capture import load_feature_vector_from_json
 
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         session_date="2026-11-02",
         observation_time=datetime(2026, 11, 2, 8, 45, 0, tzinfo=MARKET_TIMEZONE),
         availability_time=datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE),

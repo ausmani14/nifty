@@ -10,6 +10,8 @@ from nifty_ai.shadow.contracts import LedgerStatus, ProvenanceType
 from nifty_ai.shadow.inference import ShadowInferenceRunner
 from nifty_ai.shadow.input_capture import (
     build_synthetic_feature_vector,
+)
+from tests.fixtures.synthetic_inputs import (
     build_verified_prospective_feature_vector,
 )
 from nifty_ai.shadow.input_validator import SnapshotBInputValidator

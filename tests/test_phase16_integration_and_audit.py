@@ -35,6 +35,8 @@ from nifty_ai.shadow.contracts import (
 from nifty_ai.shadow.inference import ShadowInferenceRunner
 from nifty_ai.shadow.input_capture import (
     build_synthetic_feature_vector,
+)
+from tests.fixtures.synthetic_inputs import (
     build_verified_prospective_feature_vector,
 )
 from nifty_ai.shadow.input_validator import (
@@ -216,7 +218,7 @@ def test_group_b_rejects_future_observation_timestamp():
     validator = SnapshotBInputValidator()
     future_obs = datetime(2026, 11, 2, 8, 55, 0, tzinfo=MARKET_TIMEZONE)
     cutoff = datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE)
-    vec = build_synthetic_feature_vector(
+    vec = build_verified_prospective_feature_vector(
         "2026-11-02",
         cutoff_time=cutoff,
         observation_time=future_obs,

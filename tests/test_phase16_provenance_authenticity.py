@@ -617,3 +617,243 @@ def test_22_production_ledger_append_with_invalid_provenance_rejected(tmp_path: 
     )
     with pytest.raises(ValueError, match="strictly rejects non-prospective provenance"):
         ledger.append_prediction(pred_bad, enforce_prospective=True)
+
+
+# ---------------------------------------------------------------------------
+# 23. RFC 8032 Standard Test Vectors Verification
+# ---------------------------------------------------------------------------
+def test_23_rfc8032_standard_test_vectors():
+    """Verify Ed25519 signing and verification match official RFC 8032 vectors exactly."""
+    from nifty_ai.shadow.crypto import derive_public_key, ed25519_sign, ed25519_verify
+
+    # Vector 1
+    sk1 = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+    pk1 = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+    msg1 = b""
+    sig1 = bytes.fromhex(
+        "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+        "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+    )
+    assert derive_public_key(sk1.hex()) == pk1.hex()
+    assert ed25519_sign(msg1, sk1) == sig1
+    assert ed25519_verify(msg1, sig1, pk1) is True
+
+    # Vector 2
+    sk2 = bytes.fromhex("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+    pk2 = bytes.fromhex("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c")
+    msg2 = bytes.fromhex("72")
+    sig2 = bytes.fromhex(
+        "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da"
+        "085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"
+    )
+    assert derive_public_key(sk2.hex()) == pk2.hex()
+    assert ed25519_sign(msg2, sk2) == sig2
+    assert ed25519_verify(msg2, sig2, pk2) is True
+
+
+# ---------------------------------------------------------------------------
+# 24. Content-Addressed Storage Filename and Atomicity
+# ---------------------------------------------------------------------------
+def test_24_content_addressed_storage_filename_and_atomicity(tmp_path: Path):
+    """Raw payload store writes {sym}_{sha256}.bin, exclusive atomic creation, and collision check."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+    content = b"GENUINE_MARKET_EVIDENCE_STREAM_DATA"
+    h = hashlib.sha256(content).hexdigest()
+
+    sha, ref = store.store_payload("2026-11-02", "^NSEI", content)
+    assert sha == h
+    assert f"NSEI_{h}.bin" in ref
+    assert Path(ref).is_file() or (tmp_path / "raw" / "2026-11-02" / f"NSEI_{h}.bin").is_file()
+
+    # Idempotent write with identical bytes succeeds
+    sha2, ref2 = store.store_payload("2026-11-02", "^NSEI", content)
+    assert sha2 == h
+    assert ref2 == ref
+
+    # Attempt to write different content to existing path raises ValueError
+    target_file = tmp_path / "raw" / "2026-11-02" / f"NSEI_{h}.bin"
+    target_file.write_bytes(b"CORRUPTED_BYTES")
+    with pytest.raises(ValueError, match="Hash collision / corruption"):
+        store.store_payload("2026-11-02", "^NSEI", content)
+
+
+# ---------------------------------------------------------------------------
+# 25. Raw Payload Store Traversal and Symlink Guards
+# ---------------------------------------------------------------------------
+def test_25_raw_payload_store_traversal_and_symlink_guards(tmp_path: Path):
+    """Store rejects path traversal and symlinks strictly."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+    content = b"PAYLOAD_DATA"
+
+    # Traversal in session_date is rejected by date regex
+    with pytest.raises(ValueError, match="Invalid session_date format"):
+        store.store_payload("../../2026-11-02", "^NSEI", content)
+
+    # Retrieval of symlink is blocked
+    normal_sha, normal_ref = store.store_payload("2026-11-02", "^NSEI", content)
+    symlink_file = tmp_path / "raw" / "symlink.bin"
+    try:
+        symlink_file.symlink_to(Path(normal_ref).resolve())
+        assert store.retrieve_payload(str(symlink_file)) is None
+    except (OSError, NotImplementedError):
+        pass  # On Windows without developer mode/admin rights, symlink creation may not be permitted
+
+
+# ---------------------------------------------------------------------------
+# 26. Raw Payload Store Date and Instrument Validation
+# ---------------------------------------------------------------------------
+def test_26_raw_payload_store_date_and_instrument_validation(tmp_path: Path):
+    """Store validates session_date and canonical instrument allowlist."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+    content = b"SOME_DATA"
+
+    # Invalid dates
+    with pytest.raises(ValueError, match="Invalid session_date format"):
+        store.store_payload("20261102", "^NSEI", content)
+
+    with pytest.raises(ValueError, match="not a valid calendar date"):
+        store.store_payload("2026-02-30", "^NSEI", content)
+
+    # Disallowed instrument
+    with pytest.raises(ValueError, match="not in canonical instrument allowlist"):
+        store.store_payload("2026-11-02", "UNREGISTERED_TICKER", content)
+
+
+# ---------------------------------------------------------------------------
+# 27. Deterministic Canonical JSON Manifest Hash (RFC 8785)
+# ---------------------------------------------------------------------------
+def test_27_deterministic_canonical_json_manifest_hash():
+    """Manifest hash is independent of record order and sensitive to every field."""
+    from nifty_ai.shadow.crypto import compute_manifest_hash
+
+    manifest = build_test_source_manifest("2026-11-02")
+    hash_original = compute_manifest_hash(manifest)
+
+    # Reversing the order produces the exact same hash
+    reversed_manifest = list(reversed(manifest))
+    hash_reversed = compute_manifest_hash(reversed_manifest)
+    assert hash_original == hash_reversed
+
+    # Modifying any field produces a different hash
+    mod_staleness = [replace(manifest[0], staleness_seconds=99.0)] + list(manifest[1:])
+    assert compute_manifest_hash(mod_staleness) != hash_original
+
+    mod_tz = [replace(manifest[0], timezone="UTC")] + list(manifest[1:])
+    assert compute_manifest_hash(mod_tz) != hash_original
+
+
+# ---------------------------------------------------------------------------
+# 28. Operator Key Registry File Loading and Isolation
+# ---------------------------------------------------------------------------
+def test_28_operator_key_registry_file_loading_and_isolation(tmp_path: Path):
+    """OperatorKeyRegistry loads from reviewed JSON file and fails closed if empty."""
+    from nifty_ai.shadow.crypto import load_operator_key_registry
+
+    # Missing file returns empty registry
+    empty_reg = load_operator_key_registry(tmp_path / "nonexistent.json")
+    assert empty_reg.is_empty() is True
+
+    # Empty array returns empty registry
+    empty_json = tmp_path / "empty_keys.json"
+    empty_json.write_text("[]", encoding="utf-8")
+    loaded_empty = load_operator_key_registry(empty_json)
+    assert loaded_empty.is_empty() is True
+
+    # Valid config
+    valid_json = tmp_path / "valid_keys.json"
+    valid_data = [
+        {
+            "operator_id": "op_test",
+            "key_id": "key_test_01",
+            "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "valid_until": "2027-01-01T00:00:00+00:00",
+            "is_revoked": False,
+        }
+    ]
+    valid_json.write_text(json.dumps(valid_data), encoding="utf-8")
+    loaded_valid = load_operator_key_registry(valid_json)
+    assert loaded_valid.is_empty() is False
+    assert loaded_valid.get_key("key_test_01") is not None
+
+
+# ---------------------------------------------------------------------------
+# 29. Synthetic Builders Strictly Quarantined
+# ---------------------------------------------------------------------------
+def test_29_synthetic_builders_strictly_quarantined():
+    """Synthetic builders fail closed if prospective provenance is attempted."""
+    from nifty_ai.shadow.input_capture import (
+        build_canonical_source_manifest,
+        build_synthetic_feature_vector,
+    )
+
+    # build_synthetic_feature_vector rejects prospective provenance
+    with pytest.raises(ValueError, match="strictly quarantined"):
+        build_synthetic_feature_vector("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+
+    # build_synthetic_feature_vector rejects impersonating source provider
+    with pytest.raises(ValueError, match="cannot impersonate production"):
+        build_synthetic_feature_vector("2026-11-02", source_id="production_live_feed")
+
+    # build_canonical_source_manifest rejects prospective provenance
+    with pytest.raises(ValueError, match="cannot be used for prospective provenance"):
+        build_canonical_source_manifest("2026-11-02", provenance_type=ProvenanceType.PROSPECTIVE_LIVE_CAPTURE)
+
+
+# ---------------------------------------------------------------------------
+# 30. Production Manifest Validates Timezones and Chronology
+# ---------------------------------------------------------------------------
+def test_30_production_manifest_validates_timezones_and_chronology(tmp_path: Path):
+    """Production manifest rejects invalid timezones, non-chronological timestamps, and missing fields."""
+    store = RawPayloadStore(base_dir=tmp_path / "raw")
+
+    # Construct complete payload set for 18 instruments
+    required = ["^NSEI", "CALENDAR"] + list(CANONICAL_CONTEXT_MAPPING.keys())
+    payloads = {sym: f"DATA_{sym}".encode("utf-8") for sym in required}
+
+    now_utc = datetime(2026, 11, 2, 8, 48, 0, tzinfo=timezone.utc)
+    metadata = {
+        sym: {
+            "observation_time": now_utc - timedelta(minutes=3),
+            "availability_time": now_utc - timedelta(minutes=1),
+            "ingestion_time": now_utc,
+            "timezone": "Asia/Kolkata" if sym in {"^NSEI", "CALENDAR", "^NSEBANK", "^INDIAVIX", "IN10YT=RR", "INR=X"} else ("Europe/London" if sym in {"BZ=F", "^FTSE"} else ("Asia/Tokyo" if sym == "^N225" else ("Asia/Hong_Kong" if sym == "^HSI" else "America/New_York"))),
+        }
+        for sym in required
+    }
+
+    # Perfectly valid call succeeds
+    records = build_production_source_manifest(
+        session_date="2026-11-02",
+        instrument_payloads=payloads,
+        instrument_metadata=metadata,
+        payload_store=store,
+    )
+    assert len(records) == 18
+
+    # Wrong timezone for ^NSEI fails closed
+    bad_meta = dict(metadata)
+    bad_meta["^NSEI"] = dict(metadata["^NSEI"], timezone="America/New_York")
+    with pytest.raises(ValueError, match="Timezone for '\\^NSEI' must match canonical timezone 'Asia/Kolkata'"):
+        build_production_source_manifest(
+            session_date="2026-11-02",
+            instrument_payloads=payloads,
+            instrument_metadata=bad_meta,
+            payload_store=store,
+        )
+
+    # Inverted timestamps fail closed
+    bad_time_meta = dict(metadata)
+    bad_time_meta["^NSEI"] = dict(
+        metadata["^NSEI"],
+        observation_time=now_utc,
+        availability_time=now_utc - timedelta(minutes=1),
+    )
+    with pytest.raises(ValueError, match="Metadata timestamps for '\\^NSEI' must be chronological"):
+        build_production_source_manifest(
+            session_date="2026-11-02",
+            instrument_payloads=payloads,
+            instrument_metadata=bad_time_meta,
+            payload_store=store,
+        )
+

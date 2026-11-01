@@ -119,6 +119,7 @@ class ShadowInferenceRunner:
         feature_vector: FeatureVector,
         validation_report: ValidationReport,
         prev_record_hash: str = "0" * 64,
+        operator_key_registry: Optional[Any] = None,
     ) -> ShadowPrediction:
         """Generate a single point-in-time Snapshot B prediction."""
         # 1. Validation report eligibility and status
@@ -237,7 +238,12 @@ class ShadowInferenceRunner:
         if prov.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE:
             if getattr(prov, "attestation", None) is None:
                 raise ValueError("Inference rejected: OPERATOR_ATTESTED_PROSPECTIVE requires cryptographic attestation.")
-            is_valid, sig_err = verify_attestation(feature_vector, prov.attestation, evaluation_time=eval_ist)
+            is_valid, sig_err = verify_attestation(
+                feature_vector,
+                prov.attestation,
+                registry=operator_key_registry,
+                evaluation_time=eval_ist,
+            )
             if not is_valid:
                 raise ValueError(f"Inference rejected: Operator attestation signature verification failed: {sig_err}")
 

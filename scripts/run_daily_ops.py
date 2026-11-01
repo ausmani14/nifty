@@ -21,6 +21,9 @@ import sys
 from zoneinfo import ZoneInfo
 
 from nifty_ai.config import PROJECT_ROOT
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from nifty_ai.shadow.contracts import LedgerStatus, ProvenanceType
 from nifty_ai.shadow.inference import ShadowInferenceRunner
 from nifty_ai.shadow.input_capture import build_canonical_source_manifest, build_synthetic_feature_vector
@@ -197,10 +200,10 @@ def run_dry_run() -> int:
 
         from nifty_ai.shadow.contracts import AuthorizedOperatorKey
         from nifty_ai.shadow.crypto import (
+            OperatorKeyRegistry,
             RawPayloadStore,
             generate_operator_keypair,
             create_operator_attestation,
-            get_default_key_registry,
         )
         from tests.fixtures.synthetic_inputs import build_test_prospective_feature_vector
         priv_key, pub_key = generate_operator_keypair()
@@ -212,7 +215,8 @@ def run_dry_run() -> int:
             valid_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
             is_revoked=False,
         )
-        get_default_key_registry().register_key(auth_key)
+        # Isolate ephemeral dry-run key in an explicit instance; never mutate default registry
+        dry_run_registry = OperatorKeyRegistry([auth_key])
 
         dry_run_store = RawPayloadStore(base_dir=tmp_path / "raw_captures")
         vec = build_test_prospective_feature_vector(
@@ -220,6 +224,7 @@ def run_dry_run() -> int:
             provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
             source_id="operator_verified_feed",
             payload_store=dry_run_store,
+            operator_key_registry=dry_run_registry,
         )
         att = create_operator_attestation(
             feature_vector=vec,
@@ -232,11 +237,20 @@ def run_dry_run() -> int:
         vec = replace(vec, provenance=replace(vec.provenance, attestation=att))
 
         validator = SnapshotBInputValidator()
-        rep = validator.validate(vec, current_time=simulated_eval_time)
+        rep = validator.validate(
+            vec,
+            current_time=simulated_eval_time,
+            operator_key_registry=dry_run_registry,
+        )
 
         # 3. Predict & Append to temp ledger
         runner = ShadowInferenceRunner()
-        pred = runner.predict(vec, rep, prev_record_hash=tmp_ledger.get_tip_hash())
+        pred = runner.predict(
+            vec,
+            rep,
+            prev_record_hash=tmp_ledger.get_tip_hash(),
+            operator_key_registry=dry_run_registry,
+        )
         st, _ = tmp_ledger.append_prediction(pred)
         assert st == LedgerStatus.RECORDED
 

@@ -88,6 +88,8 @@ data/processed/*
 !data/processed/.gitkeep
 data/features/*
 !data/features/.gitkeep
+data/shadow/raw_captures/*
+!data/shadow/raw_captures/.gitkeep
 
 # Common data file formats
 *.csv
