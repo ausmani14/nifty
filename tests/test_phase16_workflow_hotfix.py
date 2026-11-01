@@ -22,9 +22,11 @@ from nifty_ai.shadow.contracts import (
 )
 from nifty_ai.shadow.inference import ShadowInferenceRunner
 from nifty_ai.shadow.input_capture import (
-    build_canonical_source_manifest,
     build_synthetic_feature_vector,
-    build_verified_prospective_feature_vector,
+)
+from tests.fixtures.synthetic_inputs import (
+    build_test_source_manifest as build_canonical_source_manifest,
+    build_test_prospective_feature_vector as build_verified_prospective_feature_vector,
 )
 from nifty_ai.shadow.input_validator import (
     SNAPSHOT_B_CUTOFF_TIME,
@@ -1403,6 +1405,17 @@ def test_issue8_scenario_18_fully_valid_test_fixture_with_consistent_evidence(tm
 
     # B: Test fully valid OPERATOR_ATTESTED_PROSPECTIVE with valid Ed25519 signature
     priv_key, pub_key = generate_operator_keypair()
+    from nifty_ai.shadow.contracts import AuthorizedOperatorKey
+    from nifty_ai.shadow.crypto import get_default_key_registry
+    auth_key = AuthorizedOperatorKey(
+        operator_id="operator_primary",
+        key_id="ed25519_2026_11",
+        public_key_hex=pub_key,
+        valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        valid_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        is_revoked=False,
+    )
+    get_default_key_registry().register_key(auth_key)
     manifest_att = build_canonical_source_manifest(
         "2026-11-03",
         provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,

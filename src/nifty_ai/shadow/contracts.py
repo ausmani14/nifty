@@ -92,6 +92,29 @@ class LedgerStatus(str, Enum):
     SUPERSEDED = "SUPERSEDED"
 
 
+OPERATOR_ATTESTATION_PROTOCOL_VERSION: str = "NIFTY_AI_OPERATOR_ATTESTATION_V2"
+
+
+@dataclass(frozen=True)
+class AuthorizedOperatorKey:
+    operator_id: str
+    key_id: str
+    public_key_hex: str
+    valid_from: datetime
+    valid_until: Optional[datetime] = None
+    is_revoked: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "operator_id": self.operator_id,
+            "key_id": self.key_id,
+            "public_key_hex": self.public_key_hex,
+            "valid_from": self.valid_from.isoformat(),
+            "valid_until": self.valid_until.isoformat() if self.valid_until else None,
+            "is_revoked": self.is_revoked,
+        }
+
+
 @dataclass(frozen=True)
 class OperatorAttestation:
     operator_id: str
@@ -236,6 +259,8 @@ class ShadowPrediction:
     trading_authorized: bool
     prev_record_hash: str
     record_hash: str
+    manifest_hash: Optional[str] = None
+    raw_evidence_digest: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -257,6 +282,8 @@ class ShadowPrediction:
             "trading_authorized": self.trading_authorized,
             "prev_record_hash": self.prev_record_hash,
             "record_hash": self.record_hash,
+            "manifest_hash": self.manifest_hash,
+            "raw_evidence_digest": self.raw_evidence_digest,
         }
 
 

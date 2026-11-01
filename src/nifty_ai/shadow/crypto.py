@@ -9,7 +9,14 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from nifty_ai.config import PROJECT_ROOT
+from nifty_ai.shadow.contracts import (
+    AuthorizedOperatorKey,
+    OPERATOR_ATTESTATION_PROTOCOL_VERSION,
+)
 
 # RFC 8032 Curve25519 / Ed25519 Parameters
 _B = 256
@@ -161,16 +168,33 @@ def derive_public_key(private_key_hex: str) -> str:
 
 
 def compute_manifest_hash(source_manifest: List[Any]) -> str:
-    """Compute deterministic SHA-256 hash across all source manifest records."""
+    """Compute deterministic SHA-256 hash across all security-relevant fields of source manifest records.
+    
+    Covers: source_id, instrument_symbol, feature_family, sorted feature_names,
+    observation_time, availability_time, ingestion_time, timezone, raw_payload_hash,
+    provenance_type, staleness_seconds, and raw_payload_ref.
+    """
     sorted_records = sorted(source_manifest, key=lambda s: (s.instrument_symbol, s.source_id))
     serialized = []
     for s in sorted_records:
-        serialized.append(
-            f"{s.source_id}|{s.instrument_symbol}|{s.feature_family}|"
-            f"{','.join(sorted(s.feature_names))}|{s.raw_payload_hash}|"
-            f"{s.observation_time.isoformat()}|{s.availability_time.isoformat()}|"
-            f"{s.ingestion_time.isoformat()}"
-        )
+        prov_type = s.provenance_type.value if hasattr(s.provenance_type, "value") else str(s.provenance_type)
+        staleness_str = f"{float(getattr(s, 'staleness_seconds', 0.0)):.1f}"
+        ref_str = str(getattr(s, "raw_payload_ref", "") or "")
+        fields = [
+            str(s.source_id),
+            str(s.instrument_symbol),
+            str(s.feature_family),
+            ",".join(sorted(s.feature_names)),
+            s.observation_time.isoformat(),
+            s.availability_time.isoformat(),
+            s.ingestion_time.isoformat(),
+            str(s.timezone),
+            str(s.raw_payload_hash).lower(),
+            prov_type,
+            staleness_str,
+            ref_str,
+        ]
+        serialized.append("|".join(fields))
     combined = "\n".join(serialized).encode("utf-8")
     return hashlib.sha256(combined).hexdigest()
 
@@ -178,18 +202,30 @@ def compute_manifest_hash(source_manifest: List[Any]) -> str:
 def compute_attestation_payload(
     session_date: str,
     cutoff_time_iso: str,
+    feature_count: int,
     feature_hash: str,
     manifest_hash: str,
     signed_timestamp_iso: str,
+    operator_id: str,
+    key_id: str,
+    public_key: str,
 ) -> bytes:
-    """Construct canonical immutable byte payload for operator attestation signature."""
+    """Construct canonical immutable byte payload for operator attestation signature.
+    
+    Includes protocol version, session date, cutoff, feature count, feature hash,
+    manifest hash, signed timestamp, operator ID, key ID, and public key identity.
+    """
     payload_str = (
-        f"NIFTY_AI_OPERATOR_ATTESTATION\n"
-        f"session_date={session_date}\n"
-        f"cutoff_time={cutoff_time_iso}\n"
-        f"feature_hash={feature_hash}\n"
-        f"manifest_hash={manifest_hash}\n"
-        f"signed_timestamp={signed_timestamp_iso}"
+        f"PROTOCOL={OPERATOR_ATTESTATION_PROTOCOL_VERSION}\n"
+        f"SESSION_DATE={session_date}\n"
+        f"CUTOFF_TIME={cutoff_time_iso}\n"
+        f"FEATURE_COUNT={feature_count}\n"
+        f"FEATURE_HASH={feature_hash}\n"
+        f"MANIFEST_HASH={manifest_hash}\n"
+        f"SIGNED_TIMESTAMP={signed_timestamp_iso}\n"
+        f"OPERATOR_ID={operator_id}\n"
+        f"KEY_ID={key_id}\n"
+        f"PUBLIC_KEY={public_key.lower()}"
     )
     return payload_str.encode("utf-8")
 
@@ -202,17 +238,152 @@ def verify_raw_payload_sha256(raw_bytes: bytes, declared_hash: str) -> bool:
     return computed == declared_hash.lower()
 
 
+# ---------------------------------------------------------------------------
+# Raw Payload Capture Artifact Store
+# ---------------------------------------------------------------------------
+
+DEFAULT_RAW_CAPTURE_DIR = PROJECT_ROOT / "data" / "shadow" / "raw_captures"
+
+
+class RawPayloadStore:
+    """Persistent, retrievable content store for raw market data capture artifacts."""
+
+    def __init__(self, base_dir: Optional[Path] = None):
+        self.base_dir = base_dir or DEFAULT_RAW_CAPTURE_DIR
+
+    def store_payload(
+        self,
+        session_date: str,
+        instrument_symbol: str,
+        payload_bytes: bytes,
+    ) -> Tuple[str, str]:
+        """Store raw binary payload and return (sha256_hash, retrievable_artifact_path)."""
+        if not payload_bytes:
+            raise ValueError(f"Cannot store empty raw payload bytes for {instrument_symbol}")
+        safe_sym = instrument_symbol.replace("^", "").replace("=", "_").replace(".", "_")
+        target_dir = self.base_dir / session_date
+        target_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = target_dir / f"{safe_sym}.bin"
+        artifact_path.write_bytes(payload_bytes)
+        sha256_hash = hashlib.sha256(payload_bytes).hexdigest()
+        return sha256_hash, str(artifact_path.resolve())
+
+    def retrieve_payload(self, artifact_ref: str) -> Optional[bytes]:
+        """Retrieve actual raw bytes from artifact reference."""
+        if not artifact_ref:
+            return None
+        # Reject fake URI schemes
+        if artifact_ref.startswith("payload_ref://"):
+            return None
+        p = Path(artifact_ref)
+        if not p.is_absolute():
+            p = PROJECT_ROOT / p
+        if not p.exists() or not p.is_file():
+            return None
+        return p.read_bytes()
+
+    def verify_artifact(self, artifact_ref: str, expected_hash: str) -> Tuple[bool, Optional[str]]:
+        """Verify that an artifact file exists, is readable, and matches expected SHA-256 hash."""
+        if not artifact_ref:
+            return False, "Artifact reference is empty or missing."
+        if artifact_ref.startswith("payload_ref://"):
+            return False, f"Fake payload URI scheme rejected: '{artifact_ref}'."
+        data = self.retrieve_payload(artifact_ref)
+        if data is None:
+            return False, f"Raw payload artifact not found or unresolvable at '{artifact_ref}'."
+        computed = hashlib.sha256(data).hexdigest().lower()
+        if computed != expected_hash.lower():
+            return False, f"Raw payload hash mismatch at '{artifact_ref}': computed {computed}, expected {expected_hash.lower()}."
+        return True, None
+
+    @staticmethod
+    def compute_evidence_digest(source_manifest: List[Any]) -> str:
+        """Compute aggregate digest over all raw payload hashes in canonical instrument order."""
+        sorted_manifest = sorted(source_manifest, key=lambda s: s.instrument_symbol)
+        hashes = [f"{s.instrument_symbol}:{s.raw_payload_hash.lower()}" for s in sorted_manifest]
+        return hashlib.sha256("\n".join(hashes).encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Mandatory Operator Key Registry
+# ---------------------------------------------------------------------------
+
+class OperatorKeyRegistry:
+    """Authorized cryptographic public-key registry for prospective operators."""
+
+    def __init__(self, authorized_keys: Optional[List[AuthorizedOperatorKey]] = None):
+        self._keys: Dict[str, AuthorizedOperatorKey] = {}
+        if authorized_keys:
+            for k in authorized_keys:
+                self.register_key(k)
+
+    def register_key(self, key: AuthorizedOperatorKey) -> None:
+        """Register an authorized operator key."""
+        self._keys[key.key_id] = key
+
+    def get_key(self, key_id: str) -> Optional[AuthorizedOperatorKey]:
+        return self._keys.get(key_id)
+
+    def is_empty(self) -> bool:
+        return len(self._keys) == 0
+
+    def validate_operator_authorization(
+        self,
+        operator_id: str,
+        key_id: str,
+        public_key_hex: str,
+        evaluation_time: datetime,
+    ) -> Tuple[bool, Optional[str]]:
+        """Validate operator identity, key registration, expiration, and revocation status."""
+        if self.is_empty():
+            return False, "Trusted operator key registry is missing or empty."
+        auth_key = self.get_key(key_id)
+        if not auth_key:
+            return False, f"Unknown key_id '{key_id}' in operator key registry."
+        if auth_key.operator_id != operator_id:
+            return False, f"Operator ID mismatch: key '{key_id}' belongs to '{auth_key.operator_id}', not '{operator_id}'."
+        if auth_key.public_key_hex.lower() != public_key_hex.lower():
+            return False, f"Public key mismatch for key_id '{key_id}'."
+        if auth_key.is_revoked:
+            return False, f"Operator key '{key_id}' is revoked."
+        eval_utc = evaluation_time.astimezone(timezone.utc)
+        valid_from_utc = auth_key.valid_from.astimezone(timezone.utc)
+        if eval_utc < valid_from_utc:
+            return False, f"Operator key '{key_id}' is not yet valid (valid_from: {auth_key.valid_from.isoformat()})."
+        if auth_key.valid_until:
+            valid_until_utc = auth_key.valid_until.astimezone(timezone.utc)
+            if eval_utc > valid_until_utc:
+                return False, f"Operator key '{key_id}' has expired (valid_until: {auth_key.valid_until.isoformat()})."
+        return True, None
+
+
+_DEFAULT_OPERATOR_REGISTRY: OperatorKeyRegistry = OperatorKeyRegistry()
+
+
+def get_default_key_registry() -> OperatorKeyRegistry:
+    return _DEFAULT_OPERATOR_REGISTRY
+
+
+def set_default_key_registry(registry: OperatorKeyRegistry) -> None:
+    global _DEFAULT_OPERATOR_REGISTRY
+    _DEFAULT_OPERATOR_REGISTRY = registry
+
+
 def verify_attestation(
     feature_vector: Any,
     attestation: Any,
-    authorized_public_keys: Optional[List[str]] = None,
+    registry: Optional[OperatorKeyRegistry] = None,
+    evaluation_time: Optional[datetime] = None,
 ) -> Tuple[bool, Optional[str]]:
-    """Cryptographically verify an OperatorAttestation over a FeatureVector and its manifest."""
+    """Cryptographically verify an OperatorAttestation against the trusted key registry."""
     if not attestation:
         return False, "Attestation object is missing."
 
     if not attestation.operator_id or not attestation.operator_id.strip():
         return False, "Operator ID is missing."
+
+    if not attestation.key_id or not attestation.key_id.strip():
+        return False, "Key ID is missing."
 
     if not attestation.public_key or len(attestation.public_key) != 64:
         return False, f"Invalid public key length: expected 64 hex characters, got {len(attestation.public_key or '')}."
@@ -223,16 +394,20 @@ def verify_attestation(
     if attestation.signed_timestamp is None or attestation.signed_timestamp.tzinfo is None:
         return False, "Attestation signed_timestamp must be timezone-aware."
 
-    # Check authorized keys registry if configured
-    configured_keys = authorized_public_keys
-    if configured_keys is None:
-        env_keys = os.environ.get("NIFTY_AI_OPERATOR_PUBLIC_KEYS", "")
-        if env_keys.strip():
-            configured_keys = [k.strip().lower() for k in env_keys.split(",") if k.strip()]
+    eval_time = evaluation_time or attestation.signed_timestamp
+    active_registry = registry or get_default_key_registry()
 
-    if configured_keys and attestation.public_key.lower() not in configured_keys:
-        return False, f"Public key '{attestation.public_key}' is not in authorized operator key registry."
+    # 1. Mandatory registry verification
+    is_authorized, auth_err = active_registry.validate_operator_authorization(
+        operator_id=attestation.operator_id,
+        key_id=attestation.key_id,
+        public_key_hex=attestation.public_key,
+        evaluation_time=eval_time,
+    )
+    if not is_authorized:
+        return False, f"Operator authorization rejected: {auth_err}"
 
+    # 2. Cryptographic signature verification over canonical payload
     try:
         pk_bytes = bytes.fromhex(attestation.public_key)
         sig_bytes = bytes.fromhex(attestation.signature)
@@ -245,9 +420,13 @@ def verify_attestation(
     message = compute_attestation_payload(
         session_date=feature_vector.session_date,
         cutoff_time_iso=feature_vector.cutoff_time.isoformat(),
+        feature_count=len(feature_vector.feature_names),
         feature_hash=feature_vector.feature_hash,
         manifest_hash=manifest_hash,
         signed_timestamp_iso=attestation.signed_timestamp.isoformat(),
+        operator_id=attestation.operator_id,
+        key_id=attestation.key_id,
+        public_key=attestation.public_key,
     )
 
     is_valid = ed25519_verify(message, sig_bytes, pk_bytes)
@@ -281,9 +460,13 @@ def create_operator_attestation(
     message = compute_attestation_payload(
         session_date=feature_vector.session_date,
         cutoff_time_iso=feature_vector.cutoff_time.isoformat(),
+        feature_count=len(feature_vector.feature_names),
         feature_hash=feature_vector.feature_hash,
         manifest_hash=manifest_hash,
         signed_timestamp_iso=signed_timestamp.isoformat(),
+        operator_id=operator_id,
+        key_id=key_id,
+        public_key=pk_hex,
     )
 
     sig_bytes = ed25519_sign(message, sk_bytes)

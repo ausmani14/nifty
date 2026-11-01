@@ -195,35 +195,41 @@ def run_dry_run() -> int:
         avail_t = datetime(2026, 11, 2, 8, 48, 0, tzinfo=MARKET_TIMEZONE)
         cutoff_t = datetime(2026, 11, 2, 8, 50, 0, tzinfo=MARKET_TIMEZONE)
 
-        from nifty_ai.shadow.crypto import generate_operator_keypair, create_operator_attestation
-        from dataclasses import replace
-        priv_key, pub_key = generate_operator_keypair()
-
-        manifest = build_canonical_source_manifest(
-            session_date=test_date,
-            provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
-            source_id="operator_verified_feed",
-            observation_time=obs_t,
-            availability_time=avail_t,
+        from nifty_ai.shadow.contracts import AuthorizedOperatorKey
+        from nifty_ai.shadow.crypto import (
+            RawPayloadStore,
+            generate_operator_keypair,
+            create_operator_attestation,
+            get_default_key_registry,
         )
-        vec_unsigned = build_synthetic_feature_vector(
+        from tests.fixtures.synthetic_inputs import build_test_prospective_feature_vector
+        priv_key, pub_key = generate_operator_keypair()
+        auth_key = AuthorizedOperatorKey(
+            operator_id="operator_dry_run",
+            key_id="ed25519_dry_run_01",
+            public_key_hex=pub_key,
+            valid_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            valid_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
+            is_revoked=False,
+        )
+        get_default_key_registry().register_key(auth_key)
+
+        dry_run_store = RawPayloadStore(base_dir=tmp_path / "raw_captures")
+        vec = build_test_prospective_feature_vector(
             session_date=test_date,
             provenance_type=ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE,
-            observation_time=obs_t,
-            availability_time=avail_t,
-            cutoff_time=cutoff_t,
             source_id="operator_verified_feed",
-            source_manifest=manifest,
+            payload_store=dry_run_store,
         )
         att = create_operator_attestation(
-            feature_vector=vec_unsigned,
+            feature_vector=vec,
             operator_id="operator_dry_run",
             key_id="ed25519_dry_run_01",
             private_key_hex=priv_key,
             signed_timestamp=datetime(2026, 11, 2, 8, 49, 0, tzinfo=MARKET_TIMEZONE),
         )
-        signed_prov = replace(vec_unsigned.provenance, attestation=att)
-        vec = replace(vec_unsigned, provenance=signed_prov)
+        from dataclasses import replace
+        vec = replace(vec, provenance=replace(vec.provenance, attestation=att))
 
         validator = SnapshotBInputValidator()
         rep = validator.validate(vec, current_time=simulated_eval_time)

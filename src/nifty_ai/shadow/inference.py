@@ -222,12 +222,22 @@ class ShadowInferenceRunner:
             if not src.raw_payload_hash or len(src.raw_payload_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in src.raw_payload_hash):
                 raise ValueError(f"Inference rejected: Invalid raw_payload_hash for source {src.instrument_symbol}.")
 
+        from nifty_ai.shadow.crypto import RawPayloadStore, compute_manifest_hash, verify_attestation
+        store = RawPayloadStore()
+        for src in prov.source_manifest:
+            if src.raw_payload_ref:
+                is_valid_art, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                if not is_valid_art:
+                    raise ValueError(f"Inference rejected: Raw payload artifact verification failed for {src.instrument_symbol}: {art_err}")
+
+        recomputed_manifest_hash = compute_manifest_hash(prov.source_manifest)
+        evidence_digest = RawPayloadStore.compute_evidence_digest(prov.source_manifest)
+
         # Operator attestation verification
         if prov.provenance_type == ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE:
             if getattr(prov, "attestation", None) is None:
                 raise ValueError("Inference rejected: OPERATOR_ATTESTED_PROSPECTIVE requires cryptographic attestation.")
-            from nifty_ai.shadow.crypto import verify_attestation
-            is_valid, sig_err = verify_attestation(feature_vector, prov.attestation)
+            is_valid, sig_err = verify_attestation(feature_vector, prov.attestation, evaluation_time=eval_ist)
             if not is_valid:
                 raise ValueError(f"Inference rejected: Operator attestation signature verification failed: {sig_err}")
 
@@ -261,6 +271,8 @@ class ShadowInferenceRunner:
             "research_status": "RESEARCH_BASELINE_ONLY",
             "trading_authorized": False,
             "prev_record_hash": prev_record_hash,
+            "manifest_hash": recomputed_manifest_hash,
+            "raw_evidence_digest": evidence_digest,
         }
 
         serialized = json.dumps(record_payload, sort_keys=True).encode("utf-8")
@@ -285,4 +297,6 @@ class ShadowInferenceRunner:
             trading_authorized=False,
             prev_record_hash=prev_record_hash,
             record_hash=record_hash,
+            manifest_hash=recomputed_manifest_hash,
+            raw_evidence_digest=evidence_digest,
         )

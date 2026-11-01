@@ -71,10 +71,14 @@ class ShadowPredictionLedger:
                 enforce_prospective = True
 
         if enforce_prospective:
-            if prediction.provenance_type != ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value:
+            valid_provs = {
+                ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value,
+                ProvenanceType.OPERATOR_ATTESTED_PROSPECTIVE.value,
+            }
+            if prediction.provenance_type not in valid_provs:
                 raise ValueError(
                     f"Prospective prediction ledger strictly rejects non-prospective provenance '{prediction.provenance_type}'. "
-                    f"Only '{ProvenanceType.PROSPECTIVE_LIVE_CAPTURE.value}' is authorized."
+                    f"Only {[p for p in sorted(valid_provs)]} are authorized."
                 )
             pred_ts = prediction.prediction_timestamp
             if pred_ts.tzinfo is None:

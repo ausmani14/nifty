@@ -294,6 +294,17 @@ def attempt_live_feature_capture(
                         feature_vector=None,
                         reason=f"Source {src.instrument_symbol}: raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash.",
                     )
+                if src.raw_payload_ref:
+                    from nifty_ai.shadow.crypto import RawPayloadStore
+                    store = RawPayloadStore()
+                    is_art_valid, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                    if not is_art_valid:
+                        return DataCaptureResult(
+                            status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
+                            session_date=session_date,
+                            feature_vector=None,
+                            reason=f"Source {src.instrument_symbol}: raw payload artifact verification failed: {art_err}",
+                        )
                 if src.observation_time is None or src.observation_time.tzinfo is None:
                     return DataCaptureResult(
                         status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,
@@ -366,7 +377,7 @@ def attempt_live_feature_capture(
                         reason="Operator attestation is required for OPERATOR_ATTESTED_PROSPECTIVE. Self-declared input without cryptographic signature is rejected.",
                     )
                 from nifty_ai.shadow.crypto import verify_attestation
-                is_valid, sig_err = verify_attestation(vec, vec.provenance.attestation)
+                is_valid, sig_err = verify_attestation(vec, vec.provenance.attestation, evaluation_time=now_ist)
                 if not is_valid:
                     return DataCaptureResult(
                         status=CaptureStatus.INVALID_POINT_IN_TIME_INPUT,

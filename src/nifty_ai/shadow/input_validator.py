@@ -378,6 +378,20 @@ class SnapshotBInputValidator:
                         f"Source {src.instrument_symbol}: raw_payload_hash must be a valid 64-character hexadecimal SHA-256 hash, got '{src.raw_payload_hash}'."
                     )
 
+                # Raw payload artifact retrieval and verification
+                if src.raw_payload_ref:
+                    from nifty_ai.shadow.crypto import RawPayloadStore
+                    store = RawPayloadStore()
+                    is_art_valid, art_err = store.verify_artifact(src.raw_payload_ref, src.raw_payload_hash)
+                    if not is_art_valid:
+                        manifest_errors.append(
+                            f"Source {src.instrument_symbol}: raw payload artifact verification failed: {art_err}"
+                        )
+                elif is_prospective:
+                    manifest_errors.append(
+                        f"Source {src.instrument_symbol}: missing raw payload artifact reference."
+                    )
+
                 # Track feature coverage
                 for feat in src.feature_names:
                     if feat in seen_features:
@@ -509,7 +523,7 @@ class SnapshotBInputValidator:
                     )
                 else:
                     from nifty_ai.shadow.crypto import verify_attestation
-                    is_valid, sig_err = verify_attestation(feature_vector, prov.attestation)
+                    is_valid, sig_err = verify_attestation(feature_vector, prov.attestation, evaluation_time=now_dt)
                     if not is_valid:
                         manifest_errors.append(f"Operator attestation cryptographic verification failed: {sig_err}")
 
