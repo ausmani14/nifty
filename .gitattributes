@@ -1,0 +1,3 @@
+# Freeze model artifacts as verbatim binary to prevent cross-platform CRLF/LF transformation
+data/interim/phase13_steps2_4/models/snapshot_b_t0_primary_model.meta.json -text
+data/interim/phase13_steps2_4/models/snapshot_b_t0_primary_model.json -text
